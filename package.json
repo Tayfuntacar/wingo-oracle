@@ -1,1 +1,1 @@
-{"name":"wingo-oracle","version":"1.0.0","main":"scraper.js","scripts":{"start":"node scraper.js"}} 
+{"name":"wingo-oracle","version":"1.0.0","main":"scraper.js","scripts":{"start":"node scraper.js"},"dependencies":{"ws":"latest"}}
