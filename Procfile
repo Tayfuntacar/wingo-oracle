@@ -1,1 +1,1 @@
-node scraper.js 
+web: node scraper.js
