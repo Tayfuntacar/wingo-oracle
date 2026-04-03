@@ -60,9 +60,7 @@ function connect() {
         console.log('WS kapandi, yeniden baglaniliyor...');
         setTimeout(connect, 3000);
       });
-      w.on('error', function(e) {
-        console.log('WS hatasi:', e.message);
-      });
+      w.on('error', function(e) { console.log('WS hatasi:', e.message); });
     });
   }).on('error', function(e) {
     console.log('HTTP hatasi:', e.message);
@@ -105,9 +103,7 @@ function saveNextPrediction(round) {
       var pred = predict(draws);
       if (pred.over_under) {
         db.query('INSERT INTO predictions (round, pred_ou, pred_color, pred_first, pred_first5, pred_certain8) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (round) DO NOTHING',
-          [round + 1,
-           pred.over_under.pred,
-           pred.color ? pred.color.pred : '',
+          [round + 1, pred.over_under.pred, pred.color ? pred.color.pred : '',
            pred.first_candidates ? pred.first_candidates.join(',') : '',
            pred.first5_candidates ? pred.first5_candidates.join(',') : '',
            pred.certain8 ? pred.certain8.join(',') : ''
@@ -124,7 +120,6 @@ function predict(draws) {
   var firstNums = draws.map(function(d) { return parseInt(d.first); });
   var colorList = draws.map(function(d) { return d.color; });
   var n = draws.length;
-
   var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
   var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
   var overPct = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
@@ -137,7 +132,6 @@ function predict(draws) {
   else if(overPct<42){predOU='OVER';ouConf=60;}
   else{predOU=overPct>=50?'OVER':'UNDER';ouConf=52;}
   result.over_under={pred:predOU,conf:ouConf};
-
   var recent30=colorList.slice(0,Math.min(30,n));
   var colorCount30={};ALL_COLORS.forEach(function(c){colorCount30[c]=0;});
   recent30.forEach(function(c){if(colorCount30[c]!==undefined)colorCount30[c]++;});
@@ -153,7 +147,6 @@ function predict(draws) {
   var predColor=coldColors.length>0?coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0]:ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
   var colorConf=coldColors.length>=3?65:coldColors.length===2?55:40;
   result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount30};
-
   var numLastSeen={};for(var i=1;i<=48;i++)numLastSeen[i]=999;
   firstNums.forEach(function(num,idx){if(numLastSeen[num]===999)numLastSeen[num]=idx;});
   var recent15first=firstNums.slice(0,Math.min(15,n));
@@ -164,14 +157,12 @@ function predict(draws) {
   if(predOU==='OVER'){var ov=filtered.filter(function(x){return x>24;});if(ov.length>=5)filtered=ov;}
   else{var un=filtered.filter(function(x){return x<=24;});if(un.length>=5)filtered=un;}
   result.first_candidates=filtered.sort(function(a,b){return candidateScores[b]-candidateScores[a];}).slice(0,5);
-
   var first5freq={};allNums.forEach(function(balls){balls.slice(0,5).forEach(function(num){first5freq[num]=(first5freq[num]||0)+1;});});
   var recent20first5=[];allNums.slice(0,Math.min(20,n)).forEach(function(balls){balls.slice(0,5).forEach(function(num){recent20first5.push(num);});});
   var coldFirst5=[];for(var i=1;i<=48;i++){if(recent20first5.indexOf(i)===-1)coldFirst5.push(i);}
   var first5scores={};
   for(var i=1;i<=48;i++){first5scores[i]=(coldFirst5.indexOf(i)!==-1?15:0)-(first5freq[i]||0)*0.5+Math.min(numLastSeen[i],20)*0.5;}
   result.first5_candidates=Object.keys(first5scores).map(Number).sort(function(a,b){return first5scores[b]-first5scores[a];}).slice(0,6);
-
   var allFreq={};for(var i=1;i<=48;i++)allFreq[i]=0;
   allNums.forEach(function(balls,di){balls.forEach(function(num,bi){allFreq[num]+=1/(di+1)/(bi+1);});});
   var recent10all=[];allNums.slice(0,Math.min(10,n)).forEach(function(balls){balls.forEach(function(num){recent10all.push(num);});});
@@ -180,6 +171,93 @@ function predict(draws) {
   for(var i=1;i<=48;i++){kesinScores[i]=(cold10.indexOf(i)!==-1?15:0)-allFreq[i]*2+Math.min(numLastSeen[i],20)*0.3;}
   result.certain8=Object.keys(kesinScores).map(Number).sort(function(a,b){return kesinScores[b]-kesinScores[a];}).slice(0,8);
   return result;
+}
+
+function raporHTML(chStr) {
+  var p = '<!DOCTYPE html><html><head>';
+  p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapor</title>';
+  p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#fff;font-family:Arial,sans-serif;padding:12px;max-width:600px;margin:0 auto}';
+  p += 'h1{color:#fff;font-size:20px;margin-bottom:14px;text-align:center;font-weight:800}';
+  p += '.card{background:#262a3a;border:1px solid #3a3f52;border-radius:14px;padding:14px;margin-bottom:10px}';
+  p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
+  p += '.srow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3f52;font-size:14px}.srow:last-child{border:none}';
+  p += '.good{color:#22c55e}.bad{color:#ef4444}.mid{color:#facc15}';
+  p += '.trow{display:grid;grid-template-columns:55px 40px 70px 28px 28px 28px 28px 28px;gap:3px;padding:7px 0;border-bottom:1px solid #3a3f52;font-size:12px;align-items:center}.trow:last-child{border:none}';
+  p += '.hit{color:#22c55e;font-weight:900;font-size:15px}.miss{color:#ef4444;font-weight:900;font-size:15px}';
+  p += '.bar{height:8px;background:#3a3f52;border-radius:4px;margin-top:6px;overflow:hidden}.barfill{height:100%;border-radius:4px;background:#22c55e}';
+  p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px}';
+  p += '</style></head><body>';
+  p += '<h1>TAHMIN RAPORU</h1>';
+  p += '<button class=btn onclick="window.location.href=\'/'+'\'">ANA SAYFA</button>';
+  p += '<div id="app"><div style="text-align:center;padding:40px;color:#5a6180">Yukleniyor...</div></div>';
+  p += '<script type="text/javascript">';
+  p += 'var CH=' + chStr + ';';
+  p += 'function load(){';
+  p += 'var xhr=new XMLHttpRequest();';
+  p += 'xhr.open("GET","/report");';
+  p += 'xhr.onload=function(){';
+  p += 'try{';
+  p += 'var d=JSON.parse(xhr.responseText);';
+  p += 'var h="";';
+  p += 'var s=d.summary;';
+  p += 'h+="<div class=card><div class=title>Basari Ozeti (Son 50 Tahmin)</div>";';
+  p += 'var cats=[["Over/Under",s.ou],["Renk",s.color],["Ilk Sayi 5 Aday",s.first],["Ilk 5 - 6 Aday",s.first5],["Kesin 8 Sayi",s.certain8]];';
+  p += 'cats.forEach(function(cat){';
+  p += 'var name=cat[0];var st=cat[1];var pct=st.pct;';
+  p += 'var cls=pct>=60?"good":pct>=45?"mid":"bad";';
+  p += 'h+="<div class=srow>";';
+  p += 'h+="<span style=font-weight:700>"+name+"</span>";';
+  p += 'h+="<div style=text-align:right>";';
+  p += 'h+="<span style=font-size:22px;font-weight:900 class="+cls+">%"+pct+"</span>";';
+  p += 'h+="<div style=font-size:11px;color:#aab0c4>"+st.hit+"/"+st.total+" tuttu</div>";';
+  p += 'h+="<div class=bar><div class=barfill style=width:"+pct+"%></div></div>";';
+  p += 'h+="</div></div>";';
+  p += '});';
+  p += 'h+="</div>";';
+  p += 'if(d.rows&&d.rows.length>0){';
+  p += 'h+="<div class=card><div class=title>Son 50 Tahmin Detayi</div>";';
+  p += 'h+="<div class=trow>";';
+  p += 'h+="<span style=color:#aab0c4>Round</span>";';
+  p += 'h+="<span style=color:#aab0c4>1.S</span>";';
+  p += 'h+="<span style=color:#aab0c4>Renk</span>";';
+  p += 'h+="<span style=color:#aab0c4>OU</span>";';
+  p += 'h+="<span style=color:#aab0c4>R</span>";';
+  p += 'h+="<span style=color:#aab0c4>1S</span>";';
+  p += 'h+="<span style=color:#aab0c4>15</span>";';
+  p += 'h+="<span style=color:#aab0c4>K8</span>";';
+  p += 'h+="</div>";';
+  p += 'd.rows.forEach(function(r){';
+  p += 'var rc=CH[r.actual_color]||"#aaa";';
+  p += 'var ous=parseInt(r.ou_hit)===1?"✓":"✗";';
+  p += 'var cs=parseInt(r.color_hit)===1?"✓":"✗";';
+  p += 'var fs=parseInt(r.first_hit)===1?"✓":"✗";';
+  p += 'var f5s=parseInt(r.first5_hit)===1?"✓":"✗";';
+  p += 'var c8s=parseInt(r.certain8_hit)===1?"✓":"✗";';
+  p += 'var ouc=parseInt(r.ou_hit)===1?"hit":"miss";';
+  p += 'var cc=parseInt(r.color_hit)===1?"hit":"miss";';
+  p += 'var fc=parseInt(r.first_hit)===1?"hit":"miss";';
+  p += 'var f5c=parseInt(r.first5_hit)===1?"hit":"miss";';
+  p += 'var c8c=parseInt(r.certain8_hit)===1?"hit":"miss";';
+  p += 'h+="<div class=trow>";';
+  p += 'h+="<span style=color:#aab0c4;font-size:11px>"+r.round+"</span>";';
+  p += 'h+="<span style=font-weight:900>"+r.actual_first+"</span>";';
+  p += 'h+="<span style=color:"+rc+";font-weight:700>"+r.actual_color+"</span>";';
+  p += 'h+="<span class="+ouc+">"+ous+"</span>";';
+  p += 'h+="<span class="+cc+">"+cs+"</span>";';
+  p += 'h+="<span class="+fc+">"+fs+"</span>";';
+  p += 'h+="<span class="+f5c+">"+f5s+"</span>";';
+  p += 'h+="<span class="+c8c+">"+c8s+"</span>";';
+  p += 'h+="</div>";';
+  p += '});';
+  p += 'h+="</div>";';
+  p += '}else{';
+  p += 'h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli veri yok.</div>";';
+  p += '}';
+  p += 'document.getElementById("app").innerHTML=h;';
+  p += '}catch(e){document.getElementById("app").innerHTML="Hata: "+e.message;}';
+  p += '};xhr.send();}load();';
+  p += '</sc'+'ript></body></html>';
+  return p;
 }
 
 function startDashboard() {
@@ -228,14 +306,14 @@ function startDashboard() {
   app.get('/', function(req, res) {
     var p = '<!DOCTYPE html><html><head>';
     p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WingoOracle</title>';
-    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:480px;margin:0 auto}';
-    p += 'h1{color:#ffffff;font-size:22px;margin-bottom:14px;text-align:center;font-weight:800;letter-spacing:2px}';
+    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#fff;font-family:Arial,sans-serif;padding:12px;max-width:480px;margin:0 auto}';
+    p += 'h1{color:#fff;font-size:22px;margin-bottom:14px;text-align:center;font-weight:800;letter-spacing:2px}';
     p += '.card{background:#262a3a;border:1px solid #3a3f52;border-radius:14px;padding:14px;margin-bottom:10px}';
     p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
     p += '.over{color:#22c55e;font-weight:800}.under{color:#ef4444;font-weight:800}';
     p += '.big{font-size:34px;font-weight:900;margin:4px 0}.conf{font-size:13px;color:#aab0c4;margin-top:3px;font-weight:600}';
     p += '.nums{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}';
-    p += '.num{border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#ffffff}';
+    p += '.num{border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff}';
     p += '.row{display:grid;grid-template-columns:65px 45px 110px 70px;align-items:center;padding:9px 0;border-bottom:1px solid #3a3f52;font-size:13px}.row:last-child{border:none}';
     p += '.bar{height:7px;background:#3a3f52;border-radius:4px;margin:8px 0;overflow:hidden}.barfill{height:100%;border-radius:4px}';
     p += '.statrow{display:flex;justify-content:space-between;font-size:16px;font-weight:800;margin-bottom:4px}';
@@ -283,48 +361,8 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    var p = '<!DOCTYPE html><html><head>';
-    p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapor</title>';
-    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:600px;margin:0 auto}';
-    p += 'h1{color:#ffffff;font-size:20px;margin-bottom:14px;text-align:center;font-weight:800}';
-    p += '.card{background:#262a3a;border:1px solid #3a3f52;border-radius:14px;padding:14px;margin-bottom:10px}';
-    p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
-    p += '.srow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3f52;font-size:14px}.srow:last-child{border:none}';
-    p += '.pct{font-size:22px;font-weight:900}.good{color:#22c55e}.bad{color:#ef4444}.mid{color:#facc15}';
-    p += '.trow{display:grid;grid-template-columns:55px 40px 70px 30px 30px 30px 30px 30px;gap:4px;padding:7px 0;border-bottom:1px solid #3a3f52;font-size:12px;align-items:center}.trow:last-child{border:none}';
-    p += '.hit{color:#22c55e;font-weight:900;font-size:16px}.miss{color:#ef4444;font-weight:900;font-size:16px}.pend{color:#facc15}';
-    p += '.bar{height:8px;background:#3a3f52;border-radius:4px;margin-top:6px;overflow:hidden}.barfill{height:100%;border-radius:4px;background:#22c55e}';
-    p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px}</style></head><body>';
-    p += '<h1>TAHMIN RAPORU</h1>';
-    p += '<button class=btn onclick="window.location.href=\'/'+'\'">ANA SAYFA</button>';
-    p += '<div id="app"><div style="text-align:center;padding:40px;color:#5a6180">Yukleniyor...</div></div>';
-    p += '<script type="text/javascript">var CH='+chStr+';';
-    p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/report");xhr.onload=function(){try{';
-    p += 'var d=JSON.parse(xhr.responseText);var h="";var s=d.summary;';
-    p += 'h+="<div class=card><div class=title>Basari Ozeti (Son 50 Tahmin)</div>";';
-    p += 'var cats=[["Over/Under",s.ou],["Renk",s.color],["Ilk Sayi (5 Aday)",s.first],["Ilk 5 (6 Aday)",s.first5],["Kesin 8",s.certain8]];';
-    p += 'cats.forEach(function(c){var name=c[0];var st=c[1];var pct=st.pct;var cls=pct>=60?"good":pct>=45?"mid":"bad";';
-    p += 'h+="<div class=srow><span style=font-weight:700>"+name+"</span><div style=text-align:right><span class=\"pct "+cls+'+'"\'>%"+pct+"</span><div style=font-size:11px;color:#aab0c4>"+st.hit+"/"+st.total+" tuttu</div><div class=bar><div class=barfill style=width:"+pct+"%></div></div></div></div>";});';
-    p += 'h+="</div>";';
-    p += 'if(d.rows&&d.rows.length>0){';
-    p += 'h+="<div class=card><div class=title>Son 50 Tahmin Detayi</div>";';
-    p += 'h+="<div class=trow><span style=color:#aab0c4>Round</span><span style=color:#aab0c4>1.Say</span><span style=color:#aab0c4>Renk</span><span style=color:#aab0c4>OU</span><span style=color:#aab0c4>Renk</span><span style=color:#aab0c4>1.S</span><span style=color:#aab0c4>1.5</span><span style=color:#aab0c4>K8</span></div>";';
-    p += 'd.rows.forEach(function(r){var rc=CH[r.actual_color]||"#aaa";';
-    p += 'var ous=parseInt(r.ou_hit)===1?"✓":parseInt(r.ou_hit)===0?"✗":"?";';
-    p += 'var cs=parseInt(r.color_hit)===1?"✓":parseInt(r.color_hit)===0?"✗":"?";';
-    p += 'var fs=parseInt(r.first_hit)===1?"✓":parseInt(r.first_hit)===0?"✗":"?";';
-    p += 'var f5s=parseInt(r.first5_hit)===1?"✓":parseInt(r.first5_hit)===0?"✗":"?";';
-    p += 'var c8s=parseInt(r.certain8_hit)===1?"✓":parseInt(r.certain8_hit)===0?"✗":"?";';
-    p += 'var ouc=parseInt(r.ou_hit)===1?"hit":"miss";var cc=parseInt(r.color_hit)===1?"hit":"miss";';
-    p += 'var fc=parseInt(r.first_hit)===1?"hit":"miss";var f5c=parseInt(r.first5_hit)===1?"hit":"miss";var c8c=parseInt(r.certain8_hit)===1?"hit":"miss";';
-    p += 'h+="<div class=trow><span style=color:#aab0c4;font-size:11px>"+r.round+"</span><span style=font-weight:900>"+r.actual_first+"</span><span style=color:"+rc+";font-weight:700>"+r.actual_color+"</span><span class="+ouc+">"+ous+"</span><span class="+cc+">"+cs+"</span><span class="+fc+">"+fs+"</span><span class="+f5c+">"+f5s+"</span><span class="+c8c+">"+c8s+"</span></div>";});';
-    p += 'h+="</div>";}else{h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli veri yok.<br>Birkac cekilis bekleyin.</div>";}';
-    p += 'document.getElementById("app").innerHTML=h;';
-    p += '}catch(e){document.getElementById("app").innerHTML="Hata: "+e.message;}';
-    p += '};xhr.send();}load();';
-    p += '</sc'+'ript></body></html>';
     res.type('html');
-    res.end(p);
+    res.end(raporHTML(chStr));
   });
 
   var PORT = process.env.PORT || 3000;
