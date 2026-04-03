@@ -1,8 +1,25 @@
 var WebSocket = require('ws');
-var fs = require('fs');
 var https = require('https');
+var { Client } = require('pg');
+
+var DB_URL = 'postgresql://postgres:LqxXVFqCIrOqDMmNmsSSOvCGLUkvEtsL@junction.proxy.rlwy.net:43663/railway';
+
 var colors = {1:'Sari',9:'Sari',17:'Sari',25:'Sari',33:'Sari',41:'Sari',2:'Yesil',10:'Yesil',18:'Yesil',26:'Yesil',34:'Yesil',42:'Yesil',3:'Mavi',11:'Mavi',19:'Mavi',27:'Mavi',35:'Mavi',43:'Mavi',4:'Kirmizi',12:'Kirmizi',20:'Kirmizi',28:'Kirmizi',36:'Kirmizi',44:'Kirmizi',5:'Kahve',13:'Kahve',21:'Kahve',29:'Kahve',37:'Kahve',45:'Kahve',6:'Turuncu',14:'Turuncu',22:'Turuncu',30:'Turuncu',38:'Turuncu',46:'Turuncu',7:'Siyah',15:'Siyah',23:'Siyah',31:'Siyah',39:'Siyah',47:'Siyah',8:'Mor',16:'Mor',24:'Mor',32:'Mor',40:'Mor',48:'Mor'};
+
+var db = new Client({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+db.connect().then(function() {
+  console.log('DB baglandi!');
+  return db.query('CREATE TABLE IF NOT EXISTS draws (id SERIAL PRIMARY KEY, round INT UNIQUE, first INT, over_under VARCHAR(5), color VARCHAR(20), all_numbers TEXT, created_at TIMESTAMP DEFAULT NOW())');
+}).then(function() {
+  console.log('Tablo hazir!');
+  connect();
+}).catch(function(e) {
+  console.log('DB hatasi:', e.message);
+});
+
 var opt = {hostname:'virtualbingodataprovider-volcano.xtreme.bet',path:'/hubs/messagehub/negotiate?negotiateVersion=1',method:'POST',headers:{'Origin':'https://www.volcanobet.me'},rejectUnauthorized:false};
+
 function connect() {
   https.request(opt, function(r) {
     var b = '';
@@ -28,7 +45,7 @@ function connect() {
               var ou = first > 24 ? 'OVER' : 'UNDER';
               var renk = colors[first] || 'Bilinmiyor';
               console.log('ROUND:' + a.number + ' FIRST:' + first + ' ' + ou + ' ' + renk);
-              fs.appendFileSync('draws.csv', a.number + '|' + first + '|' + ou + '|' + renk + '|' + a.ballNumbers.join(',') + '\n');
+              db.query('INSERT INTO draws (round, first, over_under, color, all_numbers) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (round) DO NOTHING', [a.number, first, ou, renk, a.ballNumbers.join(',')]).catch(function(e) { console.log('DB insert hatasi:', e.message); });
             }
           }
         } catch(e) {}
@@ -38,6 +55,5 @@ function connect() {
     });
   }).end();
 }
-fs.writeFileSync('draws.csv', 'round|first|over_under|color|all_numbers\n');
+
 console.log('Basliyor...');
-connect();
