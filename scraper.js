@@ -123,7 +123,7 @@ function startDashboard() {
     page += 'document.getElementById("app").innerHTML=h;';
     page += '};xhr.send();}';
     page += 'load();setInterval(load,30000);';
-    page += '</sc' + 'ript></body></html>';
+    page += '</sc'+'ript></body></html>';
     res.type('html');
     res.end(page);
   });
