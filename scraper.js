@@ -17,7 +17,7 @@ db.connect().then(function() {
   console.log('DB baglandi!');
   return db.query('CREATE TABLE IF NOT EXISTS draws (id SERIAL PRIMARY KEY, round INT UNIQUE, first INT, over_under VARCHAR(5), color VARCHAR(20), all_numbers TEXT, created_at TIMESTAMP DEFAULT NOW())');
 }).then(function() {
-  return db.query('CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, round INT UNIQUE, pred_ou VARCHAR(5), pred_color VARCHAR(20), pred_first TEXT, pred_first5 TEXT, pred_certain8 TEXT, actual_first INT, actual_color VARCHAR(20), actual_ou VARCHAR(5), ou_hit INT DEFAULT -1, color_hit INT DEFAULT -1, first_hit INT DEFAULT -1, first5_hit INT DEFAULT -1, certain8_hit INT DEFAULT -1, created_at TIMESTAMP DEFAULT NOW())');
+  return db.query('CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, round INT UNIQUE, pred_ou VARCHAR(5), pred_color VARCHAR(20), pred_first TEXT, pred_first5 TEXT, pred_certain8 TEXT, actual_first INT, actual_color VARCHAR(20), actual_ou VARCHAR(5), ou_hit SMALLINT DEFAULT -1, color_hit SMALLINT DEFAULT -1, first_hit SMALLINT DEFAULT -1, first5_hit SMALLINT DEFAULT -1, certain8_hit SMALLINT DEFAULT -1, created_at TIMESTAMP DEFAULT NOW())');
 }).then(function() {
   console.log('Tablolar hazir!');
   connect();
@@ -51,56 +51,70 @@ function connect() {
               var ou = first > 24 ? 'OVER' : 'UNDER';
               var renk = colors[first] || 'Bilinmiyor';
               console.log('ROUND:' + a.number + ' FIRST:' + first + ' ' + ou + ' ' + renk);
-
-              // Çekilişi kaydet
-              db.query('INSERT INTO draws (round, first, over_under, color, all_numbers) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (round) DO NOTHING',
-                [a.number, first, ou, renk, a.ballNumbers.join(',')]).then(function() {
-
-                // Bekleyen tahminleri güncelle (son 3 çekiliş için)
-                db.query('UPDATE predictions SET actual_first=$1, actual_color=$2, actual_ou=$3, ou_hit=CASE WHEN ou_hit=-1 AND pred_ou=$3 THEN 1 WHEN ou_hit=-1 THEN 0 ELSE ou_hit END, color_hit=CASE WHEN color_hit=-1 AND pred_color=$2 THEN 1 WHEN color_hit=-1 THEN 0 ELSE color_hit END WHERE round >= $4 AND ou_hit=-1',
-                  [first, renk, ou, a.number - 3]);
-
-                // first_hit güncelle
-                db.query('SELECT id, pred_first, pred_first5, pred_certain8 FROM predictions WHERE round >= $1 AND first_hit=-1', [a.number - 3]).then(function(res) {
-                  res.rows.forEach(function(row) {
-                    var pf = row.pred_first ? row.pred_first.split(',').map(Number) : [];
-                    var pf5 = row.pred_first5 ? row.pred_first5.split(',').map(Number) : [];
-                    var pc8 = row.pred_certain8 ? row.pred_certain8.split(',').map(Number) : [];
-                    var fhit = pf.indexOf(first) !== -1 ? 1 : 0;
-                    var f5hit = pf5.indexOf(first) !== -1 ? 1 : 0;
-                    var c8hit = pc8.indexOf(first) !== -1 ? 1 : 0;
-                    db.query('UPDATE predictions SET first_hit=$1, first5_hit=$2, certain8_hit=$3 WHERE id=$4',
-                      [fhit, f5hit, c8hit, row.id]);
-                  });
-                });
-
-                // Sonraki çekiliş için tahmin kaydet
-                db.query('SELECT round, first, over_under, color, all_numbers FROM draws ORDER BY round DESC LIMIT 100').then(function(res2) {
-                  var draws = res2.rows;
-                  if (draws.length >= 5) {
-                    var pred = predict(draws);
-                    if (pred.over_under) {
-                      db.query('INSERT INTO predictions (round, pred_ou, pred_color, pred_first, pred_first5, pred_certain8) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (round) DO NOTHING',
-                        [a.number + 1,
-                         pred.over_under.pred,
-                         pred.color ? pred.color.pred : '',
-                         pred.first_candidates ? pred.first_candidates.join(',') : '',
-                         pred.first5_candidates ? pred.first5_candidates.join(',') : '',
-                         pred.certain8 ? pred.certain8.join(',') : ''
-                        ]).catch(function(e) {});
-                    }
-                  }
-                });
-
-              }).catch(function(e) { console.log('DB hatasi:', e.message); });
+              saveDraw(a.number, first, ou, renk, a.ballNumbers.join(','));
             }
           }
-        } catch(e) {}
+        } catch(e) { console.log('Mesaj hatasi:', e.message); }
       });
-      w.on('close', function() { setTimeout(connect, 3000); });
-      w.on('error', function() { setTimeout(connect, 3000); });
+      w.on('close', function() {
+        console.log('WS kapandi, yeniden baglaniliyor...');
+        setTimeout(connect, 3000);
+      });
+      w.on('error', function(e) {
+        console.log('WS hatasi:', e.message);
+      });
     });
+  }).on('error', function(e) {
+    console.log('HTTP hatasi:', e.message);
+    setTimeout(connect, 5000);
   }).end();
+}
+
+function saveDraw(round, first, ou, renk, allNums) {
+  db.query('INSERT INTO draws (round, first, over_under, color, all_numbers) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (round) DO NOTHING',
+    [round, first, ou, renk, allNums]).then(function() {
+    updatePredictions(round, first, ou, renk);
+    saveNextPrediction(round);
+  }).catch(function(e) { console.log('Draw kayit hatasi:', e.message); });
+}
+
+function updatePredictions(round, first, ou, renk) {
+  db.query('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8 FROM predictions WHERE round >= $1 AND round <= $2 AND ou_hit = -1',
+    [round - 3, round]).then(function(res) {
+    res.rows.forEach(function(row) {
+      var ouHit = row.pred_ou === ou ? 1 : 0;
+      var colorHit = row.pred_color === renk ? 1 : 0;
+      var pf = row.pred_first ? row.pred_first.split(',').map(Number) : [];
+      var pf5 = row.pred_first5 ? row.pred_first5.split(',').map(Number) : [];
+      var pc8 = row.pred_certain8 ? row.pred_certain8.split(',').map(Number) : [];
+      var firstHit = pf.indexOf(first) !== -1 ? 1 : 0;
+      var f5Hit = pf5.indexOf(first) !== -1 ? 1 : 0;
+      var c8Hit = pc8.indexOf(first) !== -1 ? 1 : 0;
+      db.query('UPDATE predictions SET actual_first=$1, actual_color=$2, actual_ou=$3, ou_hit=$4, color_hit=$5, first_hit=$6, first5_hit=$7, certain8_hit=$8 WHERE id=$9',
+        [first, renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, row.id]).catch(function(e) {
+        console.log('Prediction update hatasi:', e.message);
+      });
+    });
+  }).catch(function(e) { console.log('Prediction select hatasi:', e.message); });
+}
+
+function saveNextPrediction(round) {
+  db.query('SELECT round, first, over_under, color, all_numbers FROM draws ORDER BY round DESC LIMIT 100').then(function(res) {
+    var draws = res.rows;
+    if (draws.length >= 5) {
+      var pred = predict(draws);
+      if (pred.over_under) {
+        db.query('INSERT INTO predictions (round, pred_ou, pred_color, pred_first, pred_first5, pred_certain8) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (round) DO NOTHING',
+          [round + 1,
+           pred.over_under.pred,
+           pred.color ? pred.color.pred : '',
+           pred.first_candidates ? pred.first_candidates.join(',') : '',
+           pred.first5_candidates ? pred.first5_candidates.join(',') : '',
+           pred.certain8 ? pred.certain8.join(',') : ''
+          ]).catch(function(e) { console.log('Prediction insert hatasi:', e.message); });
+      }
+    }
+  }).catch(function(e) { console.log('Draw select hatasi:', e.message); });
 }
 
 function predict(draws) {
@@ -145,9 +159,7 @@ function predict(draws) {
   var recent15first=firstNums.slice(0,Math.min(15,n));
   var coldFirst15=[];for(var i=1;i<=48;i++){if(recent15first.indexOf(i)===-1)coldFirst15.push(i);}
   var candidateScores={};
-  for(var i=1;i<=48;i++){
-    candidateScores[i]=(coldFirst15.indexOf(i)!==-1?20:0)+Math.min(numLastSeen[i],30);
-  }
+  for(var i=1;i<=48;i++){candidateScores[i]=(coldFirst15.indexOf(i)!==-1?20:0)+Math.min(numLastSeen[i],30);}
   var filtered=Object.keys(candidateScores).map(Number);
   if(predOU==='OVER'){var ov=filtered.filter(function(x){return x>24;});if(ov.length>=5)filtered=ov;}
   else{var un=filtered.filter(function(x){return x<=24;});if(un.length>=5)filtered=un;}
@@ -194,11 +206,11 @@ function startDashboard() {
       var rows = result.rows;
       var ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0,f5Hit=0,f5Total=0,c8Hit=0,c8Total=0;
       rows.forEach(function(r) {
-        if(r.ou_hit!==null&&r.ou_hit!==-1){ouTotal++;if(r.ou_hit===1)ouHit++;}
-        if(r.color_hit!==null&&r.color_hit!==-1){colorTotal++;if(r.color_hit===1)colorHit++;}
-        if(r.first_hit!==null&&r.first_hit!==-1){firstTotal++;if(r.first_hit===1)firstHit++;}
-        if(r.first5_hit!==null&&r.first5_hit!==-1){f5Total++;if(r.first5_hit===1)f5Hit++;}
-        if(r.certain8_hit!==null&&r.certain8_hit!==-1){c8Total++;if(r.certain8_hit===1)c8Hit++;}
+        ouTotal++;if(parseInt(r.ou_hit)===1)ouHit++;
+        colorTotal++;if(parseInt(r.color_hit)===1)colorHit++;
+        firstTotal++;if(parseInt(r.first_hit)===1)firstHit++;
+        f5Total++;if(parseInt(r.first5_hit)===1)f5Hit++;
+        c8Total++;if(parseInt(r.certain8_hit)===1)c8Hit++;
       });
       res.json({
         summary:{
@@ -216,65 +228,52 @@ function startDashboard() {
   app.get('/', function(req, res) {
     var p = '<!DOCTYPE html><html><head>';
     p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WingoOracle</title>';
-    p += '<style>';
-    p += '*{margin:0;padding:0;box-sizing:border-box}';
-    p += 'body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:480px;margin:0 auto}';
+    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:480px;margin:0 auto}';
     p += 'h1{color:#ffffff;font-size:22px;margin-bottom:14px;text-align:center;font-weight:800;letter-spacing:2px}';
     p += '.card{background:#262a3a;border:1px solid #3a3f52;border-radius:14px;padding:14px;margin-bottom:10px}';
     p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
     p += '.over{color:#22c55e;font-weight:800}.under{color:#ef4444;font-weight:800}';
-    p += '.big{font-size:34px;font-weight:900;margin:4px 0}';
-    p += '.conf{font-size:13px;color:#aab0c4;margin-top:3px;font-weight:600}';
+    p += '.big{font-size:34px;font-weight:900;margin:4px 0}.conf{font-size:13px;color:#aab0c4;margin-top:3px;font-weight:600}';
     p += '.nums{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}';
     p += '.num{border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#ffffff}';
-    p += '.row{display:grid;grid-template-columns:65px 45px 110px 70px;align-items:center;padding:9px 0;border-bottom:1px solid #3a3f52;font-size:13px}';
-    p += '.row:last-child{border:none}';
-    p += '.bar{height:7px;background:#3a3f52;border-radius:4px;margin:8px 0;overflow:hidden}';
-    p += '.barfill{height:100%;border-radius:4px}';
+    p += '.row{display:grid;grid-template-columns:65px 45px 110px 70px;align-items:center;padding:9px 0;border-bottom:1px solid #3a3f52;font-size:13px}.row:last-child{border:none}';
+    p += '.bar{height:7px;background:#3a3f52;border-radius:4px;margin:8px 0;overflow:hidden}.barfill{height:100%;border-radius:4px}';
     p += '.statrow{display:flex;justify-content:space-between;font-size:16px;font-weight:800;margin-bottom:4px}';
     p += '.alert{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.6);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff6b6b;font-weight:700}';
     p += '.cbox{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;font-size:12px;margin:3px;font-weight:800;color:#fff}';
     p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px;letter-spacing:1px}';
-    p += '.ref{color:#5a6180;font-size:11px;text-align:center;margin-top:10px}';
-    p += '</style></head><body>';
+    p += '.ref{color:#5a6180;font-size:11px;text-align:center;margin-top:10px}</style></head><body>';
     p += '<h1>WINGO ORACLE</h1>';
-    p += '<button class=btn onclick="window.location.href=\'/rapor\'">RAPOR GÖRÜNTÜLE</button>';
+    p += '<button class=btn onclick="window.location.href=\'/rapor\'">RAPOR</button>';
     p += '<div id="app"><div style="text-align:center;padding:40px;color:#5a6180">Yukleniyor...</div></div>';
-    p += '<script type="text/javascript">';
-    p += 'var CH='+chStr+';';
+    p += '<script type="text/javascript">var CH='+chStr+';';
     p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/data");xhr.onload=function(){try{';
     p += 'var d=JSON.parse(xhr.responseText);var pr=d.predictions;var h="";';
     p += 'if(pr&&pr.over_under){var ou=pr.over_under;var oc=ou.pred==="OVER"?"#22c55e":"#ef4444";';
-    p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div class=title>Over / Under Tahmini</div>";';
-    p += 'h+="<div class=big style=color:"+oc+">"+ou.pred+"</div><div class=conf>Guven: %"+ou.conf+"</div></div>";}';
+    p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div class=title>Over / Under Tahmini</div><div class=big style=color:"+oc+">"+ou.pred+"</div><div class=conf>Guven: %"+ou.conf+"</div></div>";}';
     p += 'if(pr&&pr.color){var cl=pr.color;var pc=CH[cl.pred]||"#fff";';
     p += 'h+="<div class=card style=border-color:"+pc+"66><div class=title>Renk Tahmini</div>";';
     p += 'if(cl.alert){h+="<div class=alert>"+cl.alert+"</div>";}';
     p += 'h+="<div class=big style=color:"+pc+">"+cl.pred+"</div><div class=conf>Guven: %"+cl.conf+"</div>";';
-    p += 'h+="<div style=margin-top:12px><div class=title>Son 30 Cekilis Renk Dagilimi</div><div style=margin-top:6px>";';
+    p += 'h+="<div style=margin-top:12px><div class=title>Son 30 Renk Dagilimi</div><div style=margin-top:6px>";';
     p += 'var cnames=["Sari","Yesil","Mavi","Kirmizi","Kahve","Turuncu","Siyah","Mor"];';
     p += 'cnames.forEach(function(cn){var cnt=cl.counts[cn]||0;var bg=CH[cn]||"#333";';
-    p += 'var op=cnt===0?1:cnt<=2?0.65:0.3;';
-    p += 'var shadow=cnt===0?"box-shadow:0 0 14px "+bg+";border:2px solid "+bg:"border:1px solid "+bg+"44";';
+    p += 'var op=cnt===0?1:cnt<=2?0.65:0.3;var shadow=cnt===0?"box-shadow:0 0 14px "+bg+";border:2px solid "+bg:"border:1px solid "+bg+"44";';
     p += 'h+="<span class=cbox style=background:"+bg+";opacity:"+op+";"+shadow+">"+cn+" "+cnt+"</span>";});';
     p += 'h+="</div></div></div>";}';
     p += 'if(pr&&pr.first_candidates){h+="<div class=card><div class=title>Ilk Sayi - 5 Aday</div><div class=nums>";';
-    p += 'pr.first_candidates.forEach(function(n){h+="<div class=num style=background:#1e3a5f;border:2px solid #3b82f6>"+n+"</div>";});';
-    p += 'h+="</div></div>";}';
+    p += 'pr.first_candidates.forEach(function(n){h+="<div class=num style=background:#1e3a5f;border:2px solid #3b82f6>"+n+"</div>";});h+="</div></div>";}';
     p += 'if(pr&&pr.first5_candidates){h+="<div class=card><div class=title>Ilk 5te Cikacak - 6 Aday</div><div class=nums>";';
-    p += 'pr.first5_candidates.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});';
-    p += 'h+="</div></div>";}';
+    p += 'pr.first5_candidates.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});h+="</div></div>";}';
     p += 'if(pr&&pr.certain8){h+="<div class=card><div class=title>Kesin Cikacak - 8 Sayi</div><div class=nums>";';
-    p += 'pr.certain8.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});';
-    p += 'h+="</div></div>";}';
-    p += 'if(d.stats){h+="<div class=card><div class=title>Genel Istatistik ("+d.stats.total+" Round)</div>";';
+    p += 'pr.certain8.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});h+="</div></div>";}';
+    p += 'if(d.stats){h+="<div class=card><div class=title>Istatistik ("+d.stats.total+" Round)</div>";';
     p += 'h+="<div class=statrow><span class=over>OVER %"+d.stats.over_pct+"</span><span class=under>UNDER %"+d.stats.under_pct+"</span></div>";';
     p += 'h+="<div class=bar><div class=barfill style=width:"+d.stats.over_pct+"%;background:#22c55e></div></div></div>";}';
     p += 'if(d.last20){h+="<div class=card><div class=title>Son Cekilisler</div>";';
     p += 'd.last20.forEach(function(r){var oc=r.over_under==="OVER"?"#22c55e":"#ef4444";var rc=CH[r.color]||"#aaa";';
-    p += 'h+="<div class=row><span style=color:#aab0c4;font-size:12px;font-weight:600>"+r.round+"</span><span style=font-weight:900;font-size:17px;color:#ffffff>"+r.first+"</span><span style=color:"+rc+";font-weight:800;font-size:13px>"+r.color+"</span><span style=color:"+oc+";font-weight:900;font-size:14px;text-align:right>"+r.over_under+"</span></div>";});';
-    p += 'h+="</div>";}';
-    p += 'h+="<div class=ref>Her 30 saniyede bir guncellenir</div>";';
+    p += 'h+="<div class=row><span style=color:#aab0c4;font-size:12px;font-weight:600>"+r.round+"</span><span style=font-weight:900;font-size:17px>"+r.first+"</span><span style=color:"+rc+";font-weight:800>"+r.color+"</span><span style=color:"+oc+";font-weight:900;text-align:right>"+r.over_under+"</span></div>";});';
+    p += 'h+="</div>";}h+="<div class=ref>Her 30 saniyede bir guncellenir</div>";';
     p += 'document.getElementById("app").innerHTML=h;';
     p += '}catch(e){document.getElementById("app").innerHTML="<div style=color:#ef4444;padding:20px>Hata: "+e.message+"</div>";}';
     p += '};xhr.send();}load();setInterval(load,30000);';
@@ -285,66 +284,41 @@ function startDashboard() {
 
   app.get('/rapor', function(req, res) {
     var p = '<!DOCTYPE html><html><head>';
-    p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WingoOracle Rapor</title>';
-    p += '<style>';
-    p += '*{margin:0;padding:0;box-sizing:border-box}';
-    p += 'body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:600px;margin:0 auto}';
+    p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapor</title>';
+    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:600px;margin:0 auto}';
     p += 'h1{color:#ffffff;font-size:20px;margin-bottom:14px;text-align:center;font-weight:800}';
     p += '.card{background:#262a3a;border:1px solid #3a3f52;border-radius:14px;padding:14px;margin-bottom:10px}';
     p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
-    p += '.srow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3f52;font-size:14px}';
-    p += '.srow:last-child{border:none}';
-    p += '.pct{font-size:20px;font-weight:900}';
-    p += '.good{color:#22c55e}.bad{color:#ef4444}.mid{color:#facc15}';
-    p += '.trow{display:grid;grid-template-columns:50px 40px 60px 30px 30px 30px 30px 30px;gap:4px;padding:6px 0;border-bottom:1px solid #3a3f52;font-size:11px;align-items:center}';
-    p += '.trow:last-child{border:none}';
-    p += '.th{color:#aab0c4;font-weight:700}';
-    p += '.hit{color:#22c55e;font-weight:800}.miss{color:#ef4444;font-weight:800}.pend{color:#facc15}';
-    p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px}';
-    p += '.bar{height:8px;background:#3a3f52;border-radius:4px;margin-top:6px;overflow:hidden}';
-    p += '.barfill{height:100%;border-radius:4px;background:#22c55e}';
-    p += '</style></head><body>';
+    p += '.srow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3f52;font-size:14px}.srow:last-child{border:none}';
+    p += '.pct{font-size:22px;font-weight:900}.good{color:#22c55e}.bad{color:#ef4444}.mid{color:#facc15}';
+    p += '.trow{display:grid;grid-template-columns:55px 40px 70px 30px 30px 30px 30px 30px;gap:4px;padding:7px 0;border-bottom:1px solid #3a3f52;font-size:12px;align-items:center}.trow:last-child{border:none}';
+    p += '.hit{color:#22c55e;font-weight:900;font-size:16px}.miss{color:#ef4444;font-weight:900;font-size:16px}.pend{color:#facc15}';
+    p += '.bar{height:8px;background:#3a3f52;border-radius:4px;margin-top:6px;overflow:hidden}.barfill{height:100%;border-radius:4px;background:#22c55e}';
+    p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px}</style></head><body>';
     p += '<h1>TAHMIN RAPORU</h1>';
     p += '<button class=btn onclick="window.location.href=\'/'+'\'">ANA SAYFA</button>';
     p += '<div id="app"><div style="text-align:center;padding:40px;color:#5a6180">Yukleniyor...</div></div>';
-    p += '<script type="text/javascript">';
-    p += 'var CH='+chStr+';';
+    p += '<script type="text/javascript">var CH='+chStr+';';
     p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/report");xhr.onload=function(){try{';
     p += 'var d=JSON.parse(xhr.responseText);var h="";var s=d.summary;';
-    // Özet kartı
     p += 'h+="<div class=card><div class=title>Basari Ozeti (Son 50 Tahmin)</div>";';
     p += 'var cats=[["Over/Under",s.ou],["Renk",s.color],["Ilk Sayi (5 Aday)",s.first],["Ilk 5 (6 Aday)",s.first5],["Kesin 8",s.certain8]];';
     p += 'cats.forEach(function(c){var name=c[0];var st=c[1];var pct=st.pct;var cls=pct>=60?"good":pct>=45?"mid":"bad";';
-    p += 'h+="<div class=srow><span>"+name+"</span><div style=text-align:right><span class=pct "+cls+">%"+pct+"</span><div style=font-size:11px;color:#aab0c4>"+st.hit+"/"+st.total+"</div><div class=bar><div class=barfill style=width:"+pct+"%></div></div></div></div>";});';
+    p += 'h+="<div class=srow><span style=font-weight:700>"+name+"</span><div style=text-align:right><span class=\"pct "+cls+'+'"\'>%"+pct+"</span><div style=font-size:11px;color:#aab0c4>"+st.hit+"/"+st.total+" tuttu</div><div class=bar><div class=barfill style=width:"+pct+"%></div></div></div></div>";});';
     p += 'h+="</div>";';
-    // Detay tablosu
     p += 'if(d.rows&&d.rows.length>0){';
-    p += 'h+="<div class=card><div class=title>Tahmin Detaylari</div>";';
-    p += 'h+="<div class=trow th><span>Round</span><span>Gercek</span><span>Renk</span><span>OU</span><span>Renk</span><span>1.Say</span><span>1.5</span><span>K8</span></div>";';
-    p += 'd.rows.forEach(function(r){';
-    p += 'var rc=CH[r.actual_color]||"#aaa";';
-    p += 'var ouc=r.ou_hit===1?"hit":r.ou_hit===0?"miss":"pend";';
-    p += 'var cc=r.color_hit===1?"hit":r.color_hit===0?"miss":"pend";';
-    p += 'var fc=r.first_hit===1?"hit":r.first_hit===0?"miss":"pend";';
-    p += 'var f5c=r.first5_hit===1?"hit":r.first5_hit===0?"miss":"pend";';
-    p += 'var c8c=r.certain8_hit===1?"hit":r.certain8_hit===0?"miss":"pend";';
-    p += 'var ous=r.ou_hit===1?"✓":r.ou_hit===0?"✗":"?";';
-    p += 'var cs=r.color_hit===1?"✓":r.color_hit===0?"✗":"?";';
-    p += 'var fs=r.first_hit===1?"✓":r.first_hit===0?"✗":"?";';
-    p += 'var f5s=r.first5_hit===1?"✓":r.first5_hit===0?"✗":"?";';
-    p += 'var c8s=r.certain8_hit===1?"✓":r.certain8_hit===0?"✗":"?";';
-    p += 'h+="<div class=trow>";';
-    p += 'h+="<span style=color:#aab0c4>"+r.round+"</span>";';
-    p += 'h+="<span style=font-weight:900>"+r.actual_first+"</span>";';
-    p += 'h+="<span style=color:"+rc+";font-weight:700>"+r.actual_color+"</span>";';
-    p += 'h+="<span class="+ouc+">"+ous+"</span>";';
-    p += 'h+="<span class="+cc+">"+cs+"</span>";';
-    p += 'h+="<span class="+fc+">"+fs+"</span>";';
-    p += 'h+="<span class="+f5c+">"+f5s+"</span>";';
-    p += 'h+="<span class="+c8c+">"+c8s+"</span>";';
-    p += 'h+="</div>";});';
-    p += 'h+="</div>";}';
-    p += 'else{h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli tahmin verisi yok.<br>Birkaç çekiliş bekleyin.</div>";}';
+    p += 'h+="<div class=card><div class=title>Son 50 Tahmin Detayi</div>";';
+    p += 'h+="<div class=trow><span style=color:#aab0c4>Round</span><span style=color:#aab0c4>1.Say</span><span style=color:#aab0c4>Renk</span><span style=color:#aab0c4>OU</span><span style=color:#aab0c4>Renk</span><span style=color:#aab0c4>1.S</span><span style=color:#aab0c4>1.5</span><span style=color:#aab0c4>K8</span></div>";';
+    p += 'd.rows.forEach(function(r){var rc=CH[r.actual_color]||"#aaa";';
+    p += 'var ous=parseInt(r.ou_hit)===1?"✓":parseInt(r.ou_hit)===0?"✗":"?";';
+    p += 'var cs=parseInt(r.color_hit)===1?"✓":parseInt(r.color_hit)===0?"✗":"?";';
+    p += 'var fs=parseInt(r.first_hit)===1?"✓":parseInt(r.first_hit)===0?"✗":"?";';
+    p += 'var f5s=parseInt(r.first5_hit)===1?"✓":parseInt(r.first5_hit)===0?"✗":"?";';
+    p += 'var c8s=parseInt(r.certain8_hit)===1?"✓":parseInt(r.certain8_hit)===0?"✗":"?";';
+    p += 'var ouc=parseInt(r.ou_hit)===1?"hit":"miss";var cc=parseInt(r.color_hit)===1?"hit":"miss";';
+    p += 'var fc=parseInt(r.first_hit)===1?"hit":"miss";var f5c=parseInt(r.first5_hit)===1?"hit":"miss";var c8c=parseInt(r.certain8_hit)===1?"hit":"miss";';
+    p += 'h+="<div class=trow><span style=color:#aab0c4;font-size:11px>"+r.round+"</span><span style=font-weight:900>"+r.actual_first+"</span><span style=color:"+rc+";font-weight:700>"+r.actual_color+"</span><span class="+ouc+">"+ous+"</span><span class="+cc+">"+cs+"</span><span class="+fc+">"+fs+"</span><span class="+f5c+">"+f5s+"</span><span class="+c8c+">"+c8s+"</span></div>";});';
+    p += 'h+="</div>";}else{h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli veri yok.<br>Birkac cekilis bekleyin.</div>";}';
     p += 'document.getElementById("app").innerHTML=h;';
     p += '}catch(e){document.getElementById("app").innerHTML="Hata: "+e.message;}';
     p += '};xhr.send();}load();';
