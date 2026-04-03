@@ -62,10 +62,10 @@ function connect() {
           }
         } catch(e) { console.log('Mesaj hatasi:', e.message); }
       });
-      w.on('close', function() { console.log('WS kapandi, yeniden...'); setTimeout(connect, 3000); });
+      w.on('close', function() { setTimeout(connect, 3000); });
       w.on('error', function(e) { console.log('WS hatasi:', e.message); });
     });
-  }).on('error', function(e) { console.log('HTTP hatasi:', e.message); setTimeout(connect, 5000); }).end();
+  }).on('error', function(e) { setTimeout(connect, 5000); }).end();
 }
 
 function saveDraw(round, first, first5, ou, renk, allNums) {
@@ -90,42 +90,114 @@ function updatePredictions(round, first, first5, ou, renk) {
       var c8Hit = pc8.indexOf(first) !== -1 ? 1 : 0;
       var f5Match = first5.filter(function(n) { return pf5.indexOf(n) !== -1; }).length;
       var c8Match = first5.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
-      db.query('UPDATE predictions SET actual_first=$1, actual_first5=$2, actual_color=$3, actual_ou=$4, ou_hit=$5, color_hit=$6, first_hit=$7, first5_hit=$8, certain8_hit=$9, first5_match=$10, certain8_match=$11 WHERE id=$12',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, row.id]).catch(function(e) { console.log('Update hatasi:', e.message); });
+      db.query('UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11 WHERE id=$12',
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, row.id]).catch(function(e) {});
     });
-  }).catch(function(e) { console.log('Select hatasi:', e.message); });
+  }).catch(function(e) {});
 }
 
 function saveNextPrediction(round) {
   db.query('SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY round DESC LIMIT 200').then(function(res) {
     var draws = res.rows;
-    if (draws.length >= 5) {
+    if (draws.length >= 10) {
       var pred = predict(draws);
       if (pred.over_under) {
-        db.query('INSERT INTO predictions (round, pred_ou, pred_color, pred_first, pred_first5, pred_certain8) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (round) DO NOTHING',
-          [round + 1, pred.over_under.pred, pred.color ? pred.color.pred : '',
-           pred.first_candidates ? pred.first_candidates.join(',') : '',
-           pred.first5_candidates ? pred.first5_candidates.join(',') : '',
-           pred.certain8 ? pred.certain8.join(',') : ''
-          ]).catch(function(e) { console.log('Insert hatasi:', e.message); });
+        db.query('INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (round) DO NOTHING',
+          [round+1, pred.over_under.pred, pred.color?pred.color.pred:'',
+           pred.first_candidates?pred.first_candidates.join(','):'',
+           pred.first5_candidates?pred.first5_candidates.join(','):'',
+           pred.certain8?pred.certain8.join(','):'']).catch(function(e){});
       }
     }
-  }).catch(function(e) { console.log('Draw select hatasi:', e.message); });
+  }).catch(function(e){});
 }
 
-function sortAsc(arr) { return arr.slice().sort(function(a, b) { return a - b; }); }
+function sortAsc(arr) { return arr.slice().sort(function(a,b){return a-b;}); }
+
+// Monte Carlo Simulation
+function monteCarlo(draws, simCount) {
+  var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
+  
+  // Sayı olasılıkları - geçmiş veriden
+  var numProb = {};
+  for(var i=1;i<=48;i++) numProb[i] = 1;
+  allNums.forEach(function(balls, di) {
+    balls.forEach(function(num, bi) {
+      var weight = 1/(di+1) * (1/(bi+1)*2 + 0.5);
+      numProb[num] = (numProb[num]||1) + weight;
+    });
+  });
+  
+  // Monte Carlo - simCount kez çekiliş simüle et
+  var firstCount = {};
+  var top5Count = {};
+  for(var i=1;i<=48;i++) { firstCount[i]=0; top5Count[i]=0; }
+  
+  var totalProb = 0;
+  for(var i=1;i<=48;i++) totalProb += numProb[i];
+  var probs = [];
+  for(var i=1;i<=48;i++) probs.push({n:i, p:numProb[i]/totalProb});
+  probs.sort(function(a,b){return b.p-a.p;});
+  
+  for(var sim=0; sim<simCount; sim++) {
+    var pool = probs.slice();
+    var drawn = [];
+    for(var k=0;k<35;k++) {
+      var r = Math.random();
+      var cum = 0;
+      var chosen = pool[0];
+      for(var m=0;m<pool.length;m++) {
+        cum += pool[m].p;
+        if(r <= cum) { chosen = pool[m]; break; }
+      }
+      drawn.push(chosen.n);
+      pool = pool.filter(function(x){return x.n !== chosen.n;});
+      var newTotal = pool.reduce(function(s,x){return s+x.p;},0);
+      pool = pool.map(function(x){return {n:x.n,p:x.p/newTotal};});
+    }
+    firstCount[drawn[0]]++;
+    drawn.slice(0,5).forEach(function(n){top5Count[n]++;});
+  }
+  
+  return {firstCount:firstCount, top5Count:top5Count, simCount:simCount};
+}
+
+// Pair analizi - hangi sayılar birlikte çıkıyor
+function pairAnalysis(draws) {
+  var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
+  var pairs = {};
+  allNums.forEach(function(balls) {
+    var first5 = balls.slice(0,5);
+    first5.forEach(function(a) {
+      first5.forEach(function(b) {
+        if(a !== b) {
+          var key = Math.min(a,b)+'-'+Math.max(a,b);
+          pairs[key] = (pairs[key]||0) + 1;
+        }
+      });
+    });
+  });
+  return pairs;
+}
 
 function predict(draws) {
   var result = {};
   if (!draws || draws.length < 5) return result;
-  var allNums = draws.map(function(d) { return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
-  var firstNums = draws.map(function(d) { return parseInt(d.first); });
-  var colorList = draws.map(function(d) { return d.color; });
+  var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
+  var firstNums = draws.map(function(d){ return parseInt(d.first); });
+  var colorList = draws.map(function(d){ return d.color; });
   var n = draws.length;
 
+  // ── OVER/UNDER ──────────────────────────
   var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
   var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
   var overPct = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
+  
+  // Position bias - ilk sayı hangi aralıkta daha çok
+  var lowFirst = firstNums.filter(function(x){return x<=24;}).length;
+  var highFirst = n - lowFirst;
+  var positionBias = lowFirst > highFirst ? 'UNDER' : 'OVER';
+  
   var predOU='OVER',ouConf=50;
   if(last3over===3){predOU='UNDER';ouConf=75;}
   else if(last3over===0){predOU='OVER';ouConf=75;}
@@ -133,9 +205,10 @@ function predict(draws) {
   else if(last5over<=1){predOU='OVER';ouConf=68;}
   else if(overPct>58){predOU='UNDER';ouConf=60;}
   else if(overPct<42){predOU='OVER';ouConf=60;}
-  else{predOU=overPct>=50?'OVER':'UNDER';ouConf=52;}
+  else{predOU=positionBias;ouConf=52;}
   result.over_under={pred:predOU,conf:ouConf};
 
+  // ── RENK ────────────────────────────────
   var recent30=colorList.slice(0,Math.min(30,n));
   var colorCount30={};ALL_COLORS.forEach(function(c){colorCount30[c]=0;});
   recent30.forEach(function(c){if(colorCount30[c]!==undefined)colorCount30[c]++;});
@@ -149,9 +222,12 @@ function predict(draws) {
   var colorScores={};
   ALL_COLORS.forEach(function(c){colorScores[c]=(30-colorCount30[c]*3)+Math.min(colorLastSeen[c],30);});
   var predColor=coldColors.length>0?coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0]:ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
-  var colorConf=coldColors.length>=3?65:coldColors.length===2?55:40;
+  var colorConf=coldColors.length>=4?80:coldColors.length>=3?65:coldColors.length===2?55:40;
   result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount30};
 
+  // ── SAYI SKORLARI ────────────────────────
+
+  // 1. Markov Chain
   var markov={};
   for(var i=0;i<Math.min(n-1,200);i++){
     var cur=firstNums[i+1];var nxt=firstNums[i];
@@ -160,56 +236,108 @@ function predict(draws) {
   }
   var lastFirst=firstNums[0];
   var markovScores={};
-  for(var i=1;i<=48;i++){markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]?markov[lastFirst][i]*5:0;}
+  for(var i=1;i<=48;i++){
+    var total=0;
+    if(markov[lastFirst]){Object.keys(markov[lastFirst]).forEach(function(k){total+=markov[lastFirst][k];});}
+    markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]?(markov[lastFirst][i]/total)*100:0;
+  }
 
-  var freqDecay={};for(var i=1;i<=48;i++)freqDecay[i]=0;
-  firstNums.forEach(function(num,idx){freqDecay[num]+=1/(idx+1);});
-
-  var recent15=firstNums.slice(0,Math.min(15,n));
-  var coldNums=[];for(var i=1;i<=48;i++){if(recent15.indexOf(i)===-1)coldNums.push(i);}
-
+  // 2. Hybrid Score (w1*freq + w2*recency + w3*gap + w4*trend)
+  var w1=0.30,w2=0.25,w3=0.25,w4=0.20;
+  var freq={};for(var i=1;i<=48;i++)freq[i]=0;
+  firstNums.forEach(function(n){freq[n]++;});
+  
   var numLastSeen={};for(var i=1;i<=48;i++)numLastSeen[i]=999;
   firstNums.forEach(function(num,idx){if(numLastSeen[num]===999)numLastSeen[num]=idx;});
+  
+  var maxFreq=Math.max.apply(null,Object.values(freq))||1;
+  var hybridScores={};
+  for(var i=1;i<=48;i++){
+    var freqScore = (maxFreq - freq[i]) / maxFreq * 100; // az gelen yüksek skor
+    var recencyScore = Math.min(numLastSeen[i], 50) * 2; // uzun süredir gelmeyen yüksek
+    var gapAvg = n / (freq[i]||1); // ortalama bekleme
+    var gapScore = numLastSeen[i] >= gapAvg ? 80 : 20; // bekleme süresi dolduysa yüksek
+    var recent10 = firstNums.slice(0,10);
+    var trendScore = recent10.indexOf(i) === -1 ? 60 : 20; // son 10'da yoksa yüksek
+    hybridScores[i] = w1*freqScore + w2*recencyScore + w3*gapScore + w4*trendScore;
+  }
 
-  var neighborBonus={};
-  for(var i=1;i<=48;i++){var dist=Math.abs(i-lastFirst);neighborBonus[i]=dist<=3&&dist>0?(4-dist)*2:0;}
-
-  var hour=new Date().getUTCHours()+3;if(hour>=24)hour-=24;
-  var timeDraws=draws.filter(function(d){
-    if(!d.created_at)return false;
-    var h=new Date(d.created_at).getUTCHours()+3;if(h>=24)h-=24;
-    return Math.abs(h-hour)<=2;
+  // 3. Monte Carlo
+  var mc = monteCarlo(draws, 2000);
+  var mcFirstMax = Math.max.apply(null, Object.values(mc.firstCount))||1;
+  var mcTop5Max = Math.max.apply(null, Object.values(mc.top5Count))||1;
+  
+  // 4. Pair analizi - son sayıyla en çok beraber çıkanlar
+  var pairs = pairAnalysis(draws);
+  var pairScores = {};
+  for(var i=1;i<=48;i++) pairScores[i] = 0;
+  Object.keys(pairs).forEach(function(key) {
+    var parts = key.split('-').map(Number);
+    if(parts[0]===lastFirst||parts[1]===lastFirst) {
+      var other = parts[0]===lastFirst?parts[1]:parts[0];
+      pairScores[other] = (pairScores[other]||0) + pairs[key];
+    }
   });
-  var timeFreq={};for(var i=1;i<=48;i++)timeFreq[i]=0;
-  timeDraws.forEach(function(d){timeFreq[parseInt(d.first)]=(timeFreq[parseInt(d.first)]||0)+1;});
+  var maxPair = Math.max.apply(null,Object.values(pairScores))||1;
 
+  // 5. Komşu bonus
+  var neighborBonus={};
+  for(var i=1;i<=48;i++){var dist=Math.abs(i-lastFirst);neighborBonus[i]=dist<=3&&dist>0?(4-dist)*3:0;}
+
+  // 6. Zaman bazlı
+  var hour=new Date().getUTCHours()+3;if(hour>=24)hour-=24;
+  var timeFreq={};for(var i=1;i<=48;i++)timeFreq[i]=0;
+  draws.forEach(function(d){
+    if(!d.created_at)return;
+    var h=new Date(d.created_at).getUTCHours()+3;if(h>=24)h-=24;
+    if(Math.abs(h-hour)<=2)timeFreq[parseInt(d.first)]=(timeFreq[parseInt(d.first)]||0)+1;
+  });
+
+  // 7. Çift/Tek denge
   var last10even=firstNums.slice(0,10).filter(function(x){return x%2===0;}).length;
   var evenBonus=last10even<=3?1:0;
 
+  // KOMBİNE SKOR
   var numScores={};
   for(var i=1;i<=48;i++){
-    numScores[i]=markovScores[i]*2+(coldNums.indexOf(i)!==-1?20:0)+Math.min(numLastSeen[i],30)+neighborBonus[i]-freqDecay[i]*4+(timeFreq[i]||0)*3+(i%2===0?evenBonus*3:0);
+    numScores[i] = 
+      hybridScores[i]*0.30 +
+      markovScores[i]*0.25 +
+      (mc.firstCount[i]/mcFirstMax)*100*0.20 +
+      (pairScores[i]/maxPair)*50*0.10 +
+      neighborBonus[i]*0.05 +
+      (timeFreq[i]||0)*5*0.05 +
+      (i%2===0?evenBonus*10:0)*0.05;
   }
 
+  // İLK SAYI - Over/Under filtreyle
   var filtered=Object.keys(numScores).map(Number);
   if(predOU==='OVER'){var ov=filtered.filter(function(x){return x>24;});if(ov.length>=5)filtered=ov;}
   else{var un=filtered.filter(function(x){return x<=24;});if(un.length>=5)filtered=un;}
   result.first_candidates=sortAsc(filtered.sort(function(a,b){return numScores[b]-numScores[a];}).slice(0,5));
 
-  var first5freq={};allNums.forEach(function(balls){balls.slice(0,5).forEach(function(num){first5freq[num]=(first5freq[num]||0)+1;});});
-  var recent20first5=[];allNums.slice(0,Math.min(20,n)).forEach(function(balls){balls.slice(0,5).forEach(function(num){recent20first5.push(num);});});
-  var coldFirst5=[];for(var i=1;i<=48;i++){if(recent20first5.indexOf(i)===-1)coldFirst5.push(i);}
+  // İLK 5 ADAYLARI - top5 Monte Carlo + hybrid
   var first5scores={};
-  for(var i=1;i<=48;i++){first5scores[i]=(coldFirst5.indexOf(i)!==-1?15:0)-(first5freq[i]||0)*0.5+Math.min(numLastSeen[i],20)*0.5+(numScores[i]||0)*0.2;}
+  for(var i=1;i<=48;i++){
+    first5scores[i] = 
+      (mc.top5Count[i]/mcTop5Max)*100*0.40 +
+      hybridScores[i]*0.30 +
+      (pairScores[i]/maxPair)*50*0.20 +
+      (timeFreq[i]||0)*5*0.10;
+  }
   result.first5_candidates=sortAsc(Object.keys(first5scores).map(Number).sort(function(a,b){return first5scores[b]-first5scores[a];}).slice(0,6));
 
-  var allFreq={};for(var i=1;i<=48;i++)allFreq[i]=0;
-  allNums.forEach(function(balls,di){balls.forEach(function(num,bi){allFreq[num]+=1/(di+1)/(bi+1);});});
-  var recent10all=[];allNums.slice(0,Math.min(10,n)).forEach(function(balls){balls.forEach(function(num){recent10all.push(num);});});
-  var cold10=[];for(var i=1;i<=48;i++){if(recent10all.indexOf(i)===-1)cold10.push(i);}
+  // KESİN 8 - Monte Carlo ağırlıklı
   var kesinScores={};
-  for(var i=1;i<=48;i++){kesinScores[i]=(cold10.indexOf(i)!==-1?15:0)-allFreq[i]*2+Math.min(numLastSeen[i],20)*0.3+(numScores[i]||0)*0.15+(markovScores[i]||0)*0.5;}
+  for(var i=1;i<=48;i++){
+    kesinScores[i] = 
+      (mc.top5Count[i]/mcTop5Max)*100*0.45 +
+      hybridScores[i]*0.30 +
+      markovScores[i]*0.15 +
+      (pairScores[i]/maxPair)*50*0.10;
+  }
   result.certain8=sortAsc(Object.keys(kesinScores).map(Number).sort(function(a,b){return kesinScores[b]-kesinScores[a];}).slice(0,8));
+
   return result;
 }
 
@@ -371,7 +499,7 @@ function startDashboard() {
     p += 'pc8.forEach(function(n){var hit=af5.indexOf(n)!==-1;var cls=hit?"ns nhit":"ns nmiss";h+="<span class="+cls+">"+n+"</span>";});';
     p += 'h+="</div></div>";});';
     p += 'h+="</div>";}';
-    p += 'else{h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli veri yok.<br>Birkac cekilis bekleyin.</div>";}';
+    p += 'else{h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli veri yok.</div>";}';
     p += 'document.getElementById("app").innerHTML=h;';
     p += '}catch(e){document.getElementById("app").innerHTML="Hata: "+e.message;}';
     p += '};xhr.send();}load();';
