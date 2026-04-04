@@ -91,9 +91,9 @@ function updatePredictions(round, first, first5, ou, renk) {
       var f5Match = first5.filter(function(n) { return pf5.indexOf(n) !== -1; }).length;
       var c8Match = first5.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
       db.query('UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11 WHERE id=$12',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, row.id]).catch(function(e) {});
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, row.id]).catch(function(e){});
     });
-  }).catch(function(e) {});
+  }).catch(function(e){});
 }
 
 function saveNextPrediction(round) {
@@ -114,11 +114,14 @@ function saveNextPrediction(round) {
 
 function sortAsc(arr) { return arr.slice().sort(function(a,b){return a-b;}); }
 
-// Monte Carlo Simulation
+// Deterministik pseudo-random (seed bazlı)
+function seededRandom(seed) {
+  var x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
 function monteCarlo(draws, simCount) {
   var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
-  
-  // Sayı olasılıkları - geçmiş veriden
   var numProb = {};
   for(var i=1;i<=48;i++) numProb[i] = 1;
   allNums.forEach(function(balls, di) {
@@ -127,23 +130,25 @@ function monteCarlo(draws, simCount) {
       numProb[num] = (numProb[num]||1) + weight;
     });
   });
-  
-  // Monte Carlo - simCount kez çekiliş simüle et
-  var firstCount = {};
-  var top5Count = {};
-  for(var i=1;i<=48;i++) { firstCount[i]=0; top5Count[i]=0; }
-  
   var totalProb = 0;
   for(var i=1;i<=48;i++) totalProb += numProb[i];
   var probs = [];
   for(var i=1;i<=48;i++) probs.push({n:i, p:numProb[i]/totalProb});
   probs.sort(function(a,b){return b.p-a.p;});
-  
+
+  var firstCount = {};
+  var top5Count = {};
+  for(var i=1;i<=48;i++) { firstCount[i]=0; top5Count[i]=0; }
+
+  // Seed bazlı - veri değişmeden aynı sonuç
+  var seed = draws.length * 31 + parseInt(draws[0].first) * 17;
+
   for(var sim=0; sim<simCount; sim++) {
     var pool = probs.slice();
     var drawn = [];
     for(var k=0;k<35;k++) {
-      var r = Math.random();
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      var r = Math.abs(seed) / 0xffffffff;
       var cum = 0;
       var chosen = pool[0];
       for(var m=0;m<pool.length;m++) {
@@ -153,16 +158,14 @@ function monteCarlo(draws, simCount) {
       drawn.push(chosen.n);
       pool = pool.filter(function(x){return x.n !== chosen.n;});
       var newTotal = pool.reduce(function(s,x){return s+x.p;},0);
-      pool = pool.map(function(x){return {n:x.n,p:x.p/newTotal};});
+      if(newTotal > 0) pool = pool.map(function(x){return {n:x.n,p:x.p/newTotal};});
     }
     firstCount[drawn[0]]++;
     drawn.slice(0,5).forEach(function(n){top5Count[n]++;});
   }
-  
-  return {firstCount:firstCount, top5Count:top5Count, simCount:simCount};
+  return {firstCount:firstCount, top5Count:top5Count};
 }
 
-// Pair analizi - hangi sayılar birlikte çıkıyor
 function pairAnalysis(draws) {
   var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
   var pairs = {};
@@ -191,24 +194,26 @@ function predict(draws) {
   // ── OVER/UNDER ──────────────────────────
   var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
   var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
+  var last10over = firstNums.slice(0,10).filter(function(x){return x>24;}).length;
   var overPct = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
-  
-  // Position bias - ilk sayı hangi aralıkta daha çok
   var lowFirst = firstNums.filter(function(x){return x<=24;}).length;
-  var highFirst = n - lowFirst;
-  var positionBias = lowFirst > highFirst ? 'UNDER' : 'OVER';
-  
-  var predOU='OVER',ouConf=50;
-  if(last3over===3){predOU='UNDER';ouConf=75;}
-  else if(last3over===0){predOU='OVER';ouConf=75;}
-  else if(last5over>=4){predOU='UNDER';ouConf=68;}
-  else if(last5over<=1){predOU='OVER';ouConf=68;}
+  var positionBias = lowFirst > n/2 ? 'UNDER' : 'OVER';
+  var predOU='OVER', ouConf=50;
+  if(last3over===3){predOU='UNDER';ouConf=78;}
+  else if(last3over===0){predOU='OVER';ouConf=78;}
+  else if(last5over>=4){predOU='UNDER';ouConf=70;}
+  else if(last5over<=1){predOU='OVER';ouConf=70;}
+  else if(last10over>=8){predOU='UNDER';ouConf=65;}
+  else if(last10over<=2){predOU='OVER';ouConf=65;}
   else if(overPct>58){predOU='UNDER';ouConf=60;}
   else if(overPct<42){predOU='OVER';ouConf=60;}
   else{predOU=positionBias;ouConf=52;}
   result.over_under={pred:predOU,conf:ouConf};
 
   // ── RENK ────────────────────────────────
+  var recent100=colorList.slice(0,Math.min(100,n));
+  var colorCount100={};ALL_COLORS.forEach(function(c){colorCount100[c]=0;});
+  recent100.forEach(function(c){if(colorCount100[c]!==undefined)colorCount100[c]++;});
   var recent30=colorList.slice(0,Math.min(30,n));
   var colorCount30={};ALL_COLORS.forEach(function(c){colorCount30[c]=0;});
   recent30.forEach(function(c){if(colorCount30[c]!==undefined)colorCount30[c]++;});
@@ -219,15 +224,23 @@ function predict(draws) {
   if(coldColors.length>=4)colorAlert='KRITIK: '+coldColors.length+' renk hic ilk dusmedi!';
   else if(coldColors.length===3)colorAlert='DIKKAT: 3 soguk renk, biri yakinda gelecek';
   else if(coldColors.length===2)colorAlert='2 soguk renk mevcut';
+  // Renk skoru: son 30'da az + son 100'de az = yüksek skor
   var colorScores={};
-  ALL_COLORS.forEach(function(c){colorScores[c]=(30-colorCount30[c]*3)+Math.min(colorLastSeen[c],30);});
-  var predColor=coldColors.length>0?coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0]:ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
-  var colorConf=coldColors.length>=4?80:coldColors.length>=3?65:coldColors.length===2?55:40;
+  ALL_COLORS.forEach(function(c){
+    var cold30 = colorCount30[c]===0 ? 100 : (30-colorCount30[c]*3);
+    var cold100 = (100/8 - colorCount100[c]) * 2;
+    var lastSeenBonus = Math.min(colorLastSeen[c], 50) * 2;
+    colorScores[c] = cold30 + cold100 + lastSeenBonus;
+  });
+  var predColor = ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
+  // Soğuk renk varsa onu tercih et
+  if(coldColors.length > 0) predColor = coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0];
+  var colorConf=coldColors.length>=4?82:coldColors.length>=3?68:coldColors.length===2?55:42;
   result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount30};
 
   // ── SAYI SKORLARI ────────────────────────
 
-  // 1. Markov Chain
+  // Markov Chain
   var markov={};
   for(var i=0;i<Math.min(n-1,200);i++){
     var cur=firstNums[i+1];var nxt=firstNums[i];
@@ -235,56 +248,53 @@ function predict(draws) {
     markov[cur][nxt]=(markov[cur][nxt]||0)+1;
   }
   var lastFirst=firstNums[0];
+  var markovTotal=0;
+  if(markov[lastFirst]) Object.keys(markov[lastFirst]).forEach(function(k){markovTotal+=markov[lastFirst][k];});
   var markovScores={};
   for(var i=1;i<=48;i++){
-    var total=0;
-    if(markov[lastFirst]){Object.keys(markov[lastFirst]).forEach(function(k){total+=markov[lastFirst][k];});}
-    markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]?(markov[lastFirst][i]/total)*100:0;
+    markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]&&markovTotal>0?(markov[lastFirst][i]/markovTotal)*100:0;
   }
 
-  // 2. Hybrid Score (w1*freq + w2*recency + w3*gap + w4*trend)
+  // Hybrid Score
   var w1=0.30,w2=0.25,w3=0.25,w4=0.20;
   var freq={};for(var i=1;i<=48;i++)freq[i]=0;
-  firstNums.forEach(function(n){freq[n]++;});
-  
+  firstNums.forEach(function(num){freq[num]++;});
   var numLastSeen={};for(var i=1;i<=48;i++)numLastSeen[i]=999;
   firstNums.forEach(function(num,idx){if(numLastSeen[num]===999)numLastSeen[num]=idx;});
-  
-  var maxFreq=Math.max.apply(null,Object.values(freq))||1;
+  var maxFreq=Math.max.apply(null,Object.keys(freq).map(function(k){return freq[k];}))||1;
   var hybridScores={};
   for(var i=1;i<=48;i++){
-    var freqScore = (maxFreq - freq[i]) / maxFreq * 100; // az gelen yüksek skor
-    var recencyScore = Math.min(numLastSeen[i], 50) * 2; // uzun süredir gelmeyen yüksek
-    var gapAvg = n / (freq[i]||1); // ortalama bekleme
-    var gapScore = numLastSeen[i] >= gapAvg ? 80 : 20; // bekleme süresi dolduysa yüksek
-    var recent10 = firstNums.slice(0,10);
-    var trendScore = recent10.indexOf(i) === -1 ? 60 : 20; // son 10'da yoksa yüksek
-    hybridScores[i] = w1*freqScore + w2*recencyScore + w3*gapScore + w4*trendScore;
+    var freqScore=(maxFreq-freq[i])/maxFreq*100;
+    var recencyScore=Math.min(numLastSeen[i],50)*2;
+    var gapAvg=n/(freq[i]||1);
+    var gapScore=numLastSeen[i]>=gapAvg?80:20;
+    var recent10=firstNums.slice(0,10);
+    var trendScore=recent10.indexOf(i)===-1?60:20;
+    hybridScores[i]=w1*freqScore+w2*recencyScore+w3*gapScore+w4*trendScore;
   }
 
-  // 3. Monte Carlo
-  var mc = monteCarlo(draws, 2000);
-  var mcFirstMax = Math.max.apply(null, Object.values(mc.firstCount))||1;
-  var mcTop5Max = Math.max.apply(null, Object.values(mc.top5Count))||1;
-  
-  // 4. Pair analizi - son sayıyla en çok beraber çıkanlar
-  var pairs = pairAnalysis(draws);
-  var pairScores = {};
-  for(var i=1;i<=48;i++) pairScores[i] = 0;
-  Object.keys(pairs).forEach(function(key) {
-    var parts = key.split('-').map(Number);
-    if(parts[0]===lastFirst||parts[1]===lastFirst) {
-      var other = parts[0]===lastFirst?parts[1]:parts[0];
-      pairScores[other] = (pairScores[other]||0) + pairs[key];
+  // Monte Carlo
+  var mc=monteCarlo(draws,3000);
+  var mcFirstMax=Math.max.apply(null,Object.keys(mc.firstCount).map(function(k){return mc.firstCount[k];}))||1;
+  var mcTop5Max=Math.max.apply(null,Object.keys(mc.top5Count).map(function(k){return mc.top5Count[k];}))||1;
+
+  // Pair analizi
+  var pairs=pairAnalysis(draws);
+  var pairScores={};for(var i=1;i<=48;i++)pairScores[i]=0;
+  Object.keys(pairs).forEach(function(key){
+    var parts=key.split('-').map(Number);
+    if(parts[0]===lastFirst||parts[1]===lastFirst){
+      var other=parts[0]===lastFirst?parts[1]:parts[0];
+      pairScores[other]=(pairScores[other]||0)+pairs[key];
     }
   });
-  var maxPair = Math.max.apply(null,Object.values(pairScores))||1;
+  var maxPair=Math.max.apply(null,Object.values(pairScores))||1;
 
-  // 5. Komşu bonus
+  // Komşu bonus
   var neighborBonus={};
-  for(var i=1;i<=48;i++){var dist=Math.abs(i-lastFirst);neighborBonus[i]=dist<=3&&dist>0?(4-dist)*3:0;}
+  for(var i=1;i<=48;i++){var dist=Math.abs(i-lastFirst);neighborBonus[i]=dist<=3&&dist>0?(4-dist)*4:0;}
 
-  // 6. Zaman bazlı
+  // Zaman bazlı
   var hour=new Date().getUTCHours()+3;if(hour>=24)hour-=24;
   var timeFreq={};for(var i=1;i<=48;i++)timeFreq[i]=0;
   draws.forEach(function(d){
@@ -293,47 +303,47 @@ function predict(draws) {
     if(Math.abs(h-hour)<=2)timeFreq[parseInt(d.first)]=(timeFreq[parseInt(d.first)]||0)+1;
   });
 
-  // 7. Çift/Tek denge
+  // Çift/Tek denge
   var last10even=firstNums.slice(0,10).filter(function(x){return x%2===0;}).length;
   var evenBonus=last10even<=3?1:0;
 
   // KOMBİNE SKOR
   var numScores={};
   for(var i=1;i<=48;i++){
-    numScores[i] = 
-      hybridScores[i]*0.30 +
-      markovScores[i]*0.25 +
-      (mc.firstCount[i]/mcFirstMax)*100*0.20 +
-      (pairScores[i]/maxPair)*50*0.10 +
-      neighborBonus[i]*0.05 +
-      (timeFreq[i]||0)*5*0.05 +
+    numScores[i]=
+      hybridScores[i]*0.30+
+      markovScores[i]*0.25+
+      (mc.firstCount[i]/mcFirstMax)*100*0.20+
+      (pairScores[i]/maxPair)*50*0.10+
+      neighborBonus[i]*0.05+
+      (timeFreq[i]||0)*5*0.05+
       (i%2===0?evenBonus*10:0)*0.05;
   }
 
-  // İLK SAYI - Over/Under filtreyle
+  // İLK SAYI
   var filtered=Object.keys(numScores).map(Number);
   if(predOU==='OVER'){var ov=filtered.filter(function(x){return x>24;});if(ov.length>=5)filtered=ov;}
   else{var un=filtered.filter(function(x){return x<=24;});if(un.length>=5)filtered=un;}
   result.first_candidates=sortAsc(filtered.sort(function(a,b){return numScores[b]-numScores[a];}).slice(0,5));
 
-  // İLK 5 ADAYLARI - top5 Monte Carlo + hybrid
+  // İLK 5
   var first5scores={};
   for(var i=1;i<=48;i++){
-    first5scores[i] = 
-      (mc.top5Count[i]/mcTop5Max)*100*0.40 +
-      hybridScores[i]*0.30 +
-      (pairScores[i]/maxPair)*50*0.20 +
+    first5scores[i]=
+      (mc.top5Count[i]/mcTop5Max)*100*0.40+
+      hybridScores[i]*0.30+
+      (pairScores[i]/maxPair)*50*0.20+
       (timeFreq[i]||0)*5*0.10;
   }
   result.first5_candidates=sortAsc(Object.keys(first5scores).map(Number).sort(function(a,b){return first5scores[b]-first5scores[a];}).slice(0,6));
 
-  // KESİN 8 - Monte Carlo ağırlıklı
+  // KESİN 8
   var kesinScores={};
   for(var i=1;i<=48;i++){
-    kesinScores[i] = 
-      (mc.top5Count[i]/mcTop5Max)*100*0.45 +
-      hybridScores[i]*0.30 +
-      markovScores[i]*0.15 +
+    kesinScores[i]=
+      (mc.top5Count[i]/mcTop5Max)*100*0.45+
+      hybridScores[i]*0.30+
+      markovScores[i]*0.15+
       (pairScores[i]/maxPair)*50*0.10;
   }
   result.certain8=sortAsc(Object.keys(kesinScores).map(Number).sort(function(a,b){return kesinScores[b]-kesinScores[a];}).slice(0,8));
@@ -361,7 +371,7 @@ function startDashboard() {
   });
 
   app.get('/report', function(req, res) {
-    db.query('SELECT * FROM predictions WHERE ou_hit != -1 ORDER BY round DESC LIMIT 50').then(function(result) {
+    db.query('SELECT * FROM predictions WHERE ou_hit != -1 ORDER BY round DESC LIMIT 500').then(function(result) {
       var rows = result.rows;
       var ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0;
       var f5Total=0,f5Sum=0,c8Total=0,c8Sum=0;
@@ -465,7 +475,7 @@ function startDashboard() {
     p += '<script type="text/javascript">var CH='+chStr+';';
     p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/report");xhr.onload=function(){try{';
     p += 'var d=JSON.parse(xhr.responseText);var h="";var s=d.summary;';
-    p += 'h+="<div class=card><div class=title>Basari Ozeti (Son 50 Tahmin)</div>";';
+    p += 'h+="<div class=card><div class=title>Basari Ozeti (Son 500 Tahmin)</div>";';
     p += 'var cats=[["Over/Under",s.ou],["Renk",s.color],["Ilk Sayi (5 Aday)",s.first]];';
     p += 'cats.forEach(function(c){var name=c[0];var st=c[1];var pct=st.pct;';
     p += 'var col=pct>=60?"#22c55e":pct>=45?"#facc15":"#ef4444";';
