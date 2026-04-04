@@ -114,6 +114,19 @@ function saveNextPrediction(round) {
 
 function sortAsc(arr) { return arr.slice().sort(function(a,b){return a-b;}); }
 
+// Mevcut seri hesapla
+function calcStreak(firstNums) {
+  if (!firstNums || firstNums.length === 0) return {type:'OVER', count:1};
+  var last = firstNums[0] > 24 ? 'OVER' : 'UNDER';
+  var count = 1;
+  for (var i = 1; i < firstNums.length; i++) {
+    var cur = firstNums[i] > 24 ? 'OVER' : 'UNDER';
+    if (cur === last) count++;
+    else break;
+  }
+  return {type: last, count: count};
+}
+
 function monteCarlo(draws, simCount) {
   var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
   var numProb = {};
@@ -181,24 +194,59 @@ function predict(draws) {
   var colorList = draws.map(function(d){ return d.color; });
   var n = draws.length;
 
-  var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
-  var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
-  var last10over = firstNums.slice(0,10).filter(function(x){return x>24;}).length;
-  var overPct = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
-  var lowFirst = firstNums.filter(function(x){return x<=24;}).length;
-  var positionBias = lowFirst > n/2 ? 'UNDER' : 'OVER';
-  var predOU='OVER', ouConf=50;
-  if(last3over===3){predOU='UNDER';ouConf=78;}
-  else if(last3over===0){predOU='OVER';ouConf=78;}
-  else if(last5over>=4){predOU='UNDER';ouConf=70;}
-  else if(last5over<=1){predOU='OVER';ouConf=70;}
-  else if(last10over>=8){predOU='UNDER';ouConf=65;}
-  else if(last10over<=2){predOU='OVER';ouConf=65;}
-  else if(overPct>58){predOU='UNDER';ouConf=60;}
-  else if(overPct<42){predOU='OVER';ouConf=60;}
-  else{predOU=positionBias;ouConf=52;}
-  result.over_under={pred:predOU,conf:ouConf};
+  // ── SERİ ANALİZİ ────────────────────────
+  var streak = calcStreak(firstNums);
+  var predOU, ouConf, streakNote = '';
 
+  if (streak.count >= 7) {
+    // 7x ve üzeri - KESİNLİKLE karşı tarafa
+    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
+    ouConf = 88;
+    streakNote = streak.type + ' ' + streak.count + 'x seri! DONUYOR';
+  } else if (streak.count >= 5) {
+    // 5-6x - karşı tarafa geç
+    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
+    ouConf = 80;
+    streakNote = streak.type + ' ' + streak.count + 'x seri, karsi tarafa geciliyor';
+  } else if (streak.count >= 3) {
+    // 3-4x - seri devam etme ihtimali hala var ama azalıyor
+    var last10over = firstNums.slice(0,10).filter(function(x){return x>24;}).length;
+    var overPct = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
+    if (streak.count === 4) {
+      // 4x - artık dönüş yakın
+      predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
+      ouConf = 68;
+      streakNote = streak.type + ' ' + streak.count + 'x seri, donus yaklasıyor';
+    } else {
+      // 3x - devam edebilir
+      predOU = streak.type;
+      ouConf = 62;
+      streakNote = streak.type + ' ' + streak.count + 'x seri, devam edebilir';
+    }
+  } else if (streak.count === 2) {
+    // 2x - seri devam ihtimali var
+    predOU = streak.type;
+    ouConf = 58;
+    streakNote = streak.type + ' ' + streak.count + 'x seri';
+  } else {
+    // 1x - genel istatistikle devam
+    var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
+    var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
+    var overPct2 = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
+    var lowFirst = firstNums.filter(function(x){return x<=24;}).length;
+    predOU = lowFirst > n/2 ? 'UNDER' : 'OVER';
+    ouConf = 52;
+    if(last3over===3){predOU='UNDER';ouConf=65;}
+    else if(last3over===0){predOU='OVER';ouConf=65;}
+    else if(last5over>=4){predOU='UNDER';ouConf=60;}
+    else if(last5over<=1){predOU='OVER';ouConf=60;}
+    else if(overPct2>58){predOU='UNDER';ouConf=55;}
+    else if(overPct2<42){predOU='OVER';ouConf=55;}
+  }
+
+  result.over_under = {pred:predOU, conf:ouConf, streak:streak, note:streakNote};
+
+  // ── RENK ────────────────────────────────
   var recent100=colorList.slice(0,Math.min(100,n));
   var colorCount100={};ALL_COLORS.forEach(function(c){colorCount100[c]=0;});
   recent100.forEach(function(c){if(colorCount100[c]!==undefined)colorCount100[c]++;});
@@ -220,6 +268,7 @@ function predict(draws) {
   var colorConf=coldColors.length>=4?82:coldColors.length>=3?68:coldColors.length===2?55:42;
   result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount100};
 
+  // ── SAYI SKORLARI ────────────────────────
   var markov={};
   for(var i=0;i<Math.min(n-1,200);i++){
     var cur=firstNums[i+1];var nxt=firstNums[i];
@@ -372,10 +421,10 @@ function startDashboard() {
     p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
     p += '.over{color:#22c55e;font-weight:800}.under{color:#ef4444;font-weight:800}';
     p += '.big{font-size:34px;font-weight:900;margin:4px 0}.conf{font-size:13px;color:#aab0c4;margin-top:3px;font-weight:600}';
+    p += '.streak-info{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700}';
     p += '.nums{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}';
     p += '.num{border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#ffffff}';
     p += '.row{display:grid;grid-template-columns:60px 38px 90px 60px 30px;align-items:center;padding:6px 0;border-bottom:1px solid #2a2f42;font-size:12px}.row:last-child{border:none}';
-    p += '.streak{display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700}';
     p += '.bar{height:7px;background:#3a3f52;border-radius:4px;margin:8px 0;overflow:hidden}.barfill{height:100%;border-radius:4px}';
     p += '.statrow{display:flex;justify-content:space-between;font-size:16px;font-weight:800;margin-bottom:4px}';
     p += '.alert{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.6);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff6b6b;font-weight:700}';
@@ -390,9 +439,19 @@ function startDashboard() {
     p += '<script type="text/javascript">var CH='+chStr+';';
     p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/data");xhr.onload=function(){try{';
     p += 'var d=JSON.parse(xhr.responseText);var pr=d.predictions;var h="";';
-    // OVER/UNDER
+    // OVER/UNDER - seri bilgisiyle
     p += 'if(pr&&pr.over_under){var ou=pr.over_under;var oc=ou.pred==="OVER"?"#22c55e":"#ef4444";';
-    p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div class=title>Over / Under Tahmini</div><div class=big style=color:"+oc+">"+ou.pred+"</div><div class=conf>Guven: %"+ou.conf+"</div></div>";}';
+    p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div class=title>Over / Under Tahmini</div>";';
+    p += 'h+="<div class=big style=color:"+oc+">"+ou.pred+"</div>";';
+    p += 'h+="<div class=conf>Guven: %"+ou.conf+"</div>";';
+    p += 'if(ou.streak){';
+    p += 'var sc=ou.streak.count>=7?"#ef4444":ou.streak.count>=5?"#f97316":ou.streak.count>=3?"#facc15":"#aab0c4";';
+    p += 'var sbg=ou.streak.count>=7?"rgba(239,68,68,0.15)":ou.streak.count>=5?"rgba(249,115,22,0.15)":ou.streak.count>=3?"rgba(250,204,21,0.1)":"rgba(255,255,255,0.05)";';
+    p += 'h+="<div class=streak-info style=background:"+sbg+";color:"+sc+";border:1px solid "+sc+"44>";';
+    p += 'h+="Mevcut Seri: "+ou.streak.type+" "+ou.streak.count+"x";';
+    p += 'if(ou.note)h+=" — "+ou.note;';
+    p += 'h+="</div>";}';
+    p += 'h+="</div>";}';
     // RENK
     p += 'if(pr&&pr.color){var cl=pr.color;var pc=CH[cl.pred]||"#fff";';
     p += 'h+="<div class=card style=border-color:"+pc+"66><div class=title>Renk Tahmini</div>";';
@@ -416,7 +475,7 @@ function startDashboard() {
     p += 'if(d.stats){h+="<div class=card><div class=title>Istatistik ("+d.stats.total+" Round)</div>";';
     p += 'h+="<div class=statrow><span class=over>OVER %"+d.stats.over_pct+"</span><span class=under>UNDER %"+d.stats.under_pct+"</span></div>";';
     p += 'h+="<div class=bar><div class=barfill style=width:"+d.stats.over_pct+"%;background:#22c55e></div></div></div>";}';
-    // SON 200 ÇEKİLİŞ - streak göstergeli
+    // SON 200 ÇEKİLİŞ
     p += 'if(d.last200&&d.last200.length>0){';
     p += 'h+="<div class=card><div class=title>Son 200 Cekilis</div>";';
     p += 'h+="<div class=hdr><span>Round</span><span>1.S</span><span>Renk</span><span>O/U</span><span>Seri</span></div>";';
@@ -424,16 +483,16 @@ function startDashboard() {
     p += 'for(var i=0;i<d.last200.length;i++){';
     p += 'var r=d.last200[i];var next=d.last200[i+1];';
     p += 'if(next&&next.over_under===r.over_under){streak++;}else{';
-    p += 'var oc=r.over_under==="OVER"?"#22c55e":"#ef4444";';
+    p += 'var oc2=r.over_under==="OVER"?"#22c55e":"#ef4444";';
     p += 'var rc=CH[r.color]||"#aaa";';
-    p += 'var sbg=streak>=5?"rgba(255,200,0,0.2)":streak>=3?"rgba(255,140,0,0.15)":"transparent";';
-    p += 'var sc=streak>=5?"#facc15":streak>=3?"#f97316":"#5a6180";';
-    p += 'h+="<div class=row style=background:"+sbg+">";';
+    p += 'var sbg2=streak>=7?"rgba(239,68,68,0.2)":streak>=5?"rgba(249,115,22,0.15)":streak>=3?"rgba(250,204,21,0.08)":"transparent";';
+    p += 'var sc2=streak>=7?"#ef4444":streak>=5?"#f97316":streak>=3?"#facc15":"#5a6180";';
+    p += 'h+="<div class=row style=background:"+sbg2+">";';
     p += 'h+="<span style=color:#aab0c4;font-size:11px>"+r.round+"</span>";';
     p += 'h+="<span style=font-weight:900;font-size:14px>"+r.first+"</span>";';
     p += 'h+="<span style=color:"+rc+";font-weight:700>"+r.color+"</span>";';
-    p += 'h+="<span style=color:"+oc+";font-weight:900>"+r.over_under+"</span>";';
-    p += 'h+="<span style=color:"+sc+";font-weight:800;font-size:11px>"+streak+"x</span>";';
+    p += 'h+="<span style=color:"+oc2+";font-weight:900>"+r.over_under+"</span>";';
+    p += 'h+="<span style=color:"+sc2+";font-weight:800;font-size:11px>"+streak+"x</span>";';
     p += 'h+="</div>";';
     p += 'streak=1;}';
     p += '}';
