@@ -114,12 +114,6 @@ function saveNextPrediction(round) {
 
 function sortAsc(arr) { return arr.slice().sort(function(a,b){return a-b;}); }
 
-// Deterministik pseudo-random (seed bazlı)
-function seededRandom(seed) {
-  var x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-}
-
 function monteCarlo(draws, simCount) {
   var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
   var numProb = {};
@@ -135,14 +129,10 @@ function monteCarlo(draws, simCount) {
   var probs = [];
   for(var i=1;i<=48;i++) probs.push({n:i, p:numProb[i]/totalProb});
   probs.sort(function(a,b){return b.p-a.p;});
-
   var firstCount = {};
   var top5Count = {};
   for(var i=1;i<=48;i++) { firstCount[i]=0; top5Count[i]=0; }
-
-  // Seed bazlı - veri değişmeden aynı sonuç
   var seed = draws.length * 31 + parseInt(draws[0].first) * 17;
-
   for(var sim=0; sim<simCount; sim++) {
     var pool = probs.slice();
     var drawn = [];
@@ -191,7 +181,7 @@ function predict(draws) {
   var colorList = draws.map(function(d){ return d.color; });
   var n = draws.length;
 
-  // ── OVER/UNDER ──────────────────────────
+  // OVER/UNDER
   var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
   var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
   var last10over = firstNums.slice(0,10).filter(function(x){return x>24;}).length;
@@ -210,37 +200,29 @@ function predict(draws) {
   else{predOU=positionBias;ouConf=52;}
   result.over_under={pred:predOU,conf:ouConf};
 
-  // ── RENK ────────────────────────────────
+  // RENK - 100 çekiliş bazlı
   var recent100=colorList.slice(0,Math.min(100,n));
   var colorCount100={};ALL_COLORS.forEach(function(c){colorCount100[c]=0;});
   recent100.forEach(function(c){if(colorCount100[c]!==undefined)colorCount100[c]++;});
-  var recent30=colorList.slice(0,Math.min(30,n));
-  var colorCount30={};ALL_COLORS.forEach(function(c){colorCount30[c]=0;});
-  recent30.forEach(function(c){if(colorCount30[c]!==undefined)colorCount30[c]++;});
   var colorLastSeen={};ALL_COLORS.forEach(function(c){colorLastSeen[c]=999;});
   colorList.forEach(function(c,i){if(colorLastSeen[c]===999)colorLastSeen[c]=i;});
-  var coldColors=ALL_COLORS.filter(function(c){return colorCount30[c]===0;});
+  var coldColors=ALL_COLORS.filter(function(c){return colorCount100[c]===0;});
   var colorAlert='';
   if(coldColors.length>=4)colorAlert='KRITIK: '+coldColors.length+' renk hic ilk dusmedi!';
   else if(coldColors.length===3)colorAlert='DIKKAT: 3 soguk renk, biri yakinda gelecek';
   else if(coldColors.length===2)colorAlert='2 soguk renk mevcut';
-  // Renk skoru: son 30'da az + son 100'de az = yüksek skor
   var colorScores={};
   ALL_COLORS.forEach(function(c){
-    var cold30 = colorCount30[c]===0 ? 100 : (30-colorCount30[c]*3);
     var cold100 = (100/8 - colorCount100[c]) * 2;
     var lastSeenBonus = Math.min(colorLastSeen[c], 50) * 2;
-    colorScores[c] = cold30 + cold100 + lastSeenBonus;
+    colorScores[c] = cold100 + lastSeenBonus;
   });
   var predColor = ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
-  // Soğuk renk varsa onu tercih et
   if(coldColors.length > 0) predColor = coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0];
   var colorConf=coldColors.length>=4?82:coldColors.length>=3?68:coldColors.length===2?55:42;
-  result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount30};
+  result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount100};
 
-  // ── SAYI SKORLARI ────────────────────────
-
-  // Markov Chain
+  // SAYI SKORLARI
   var markov={};
   for(var i=0;i<Math.min(n-1,200);i++){
     var cur=firstNums[i+1];var nxt=firstNums[i];
@@ -255,7 +237,6 @@ function predict(draws) {
     markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]&&markovTotal>0?(markov[lastFirst][i]/markovTotal)*100:0;
   }
 
-  // Hybrid Score
   var w1=0.30,w2=0.25,w3=0.25,w4=0.20;
   var freq={};for(var i=1;i<=48;i++)freq[i]=0;
   firstNums.forEach(function(num){freq[num]++;});
@@ -273,12 +254,10 @@ function predict(draws) {
     hybridScores[i]=w1*freqScore+w2*recencyScore+w3*gapScore+w4*trendScore;
   }
 
-  // Monte Carlo
   var mc=monteCarlo(draws,3000);
   var mcFirstMax=Math.max.apply(null,Object.keys(mc.firstCount).map(function(k){return mc.firstCount[k];}))||1;
   var mcTop5Max=Math.max.apply(null,Object.keys(mc.top5Count).map(function(k){return mc.top5Count[k];}))||1;
 
-  // Pair analizi
   var pairs=pairAnalysis(draws);
   var pairScores={};for(var i=1;i<=48;i++)pairScores[i]=0;
   Object.keys(pairs).forEach(function(key){
@@ -290,11 +269,9 @@ function predict(draws) {
   });
   var maxPair=Math.max.apply(null,Object.values(pairScores))||1;
 
-  // Komşu bonus
   var neighborBonus={};
   for(var i=1;i<=48;i++){var dist=Math.abs(i-lastFirst);neighborBonus[i]=dist<=3&&dist>0?(4-dist)*4:0;}
 
-  // Zaman bazlı
   var hour=new Date().getUTCHours()+3;if(hour>=24)hour-=24;
   var timeFreq={};for(var i=1;i<=48;i++)timeFreq[i]=0;
   draws.forEach(function(d){
@@ -303,11 +280,9 @@ function predict(draws) {
     if(Math.abs(h-hour)<=2)timeFreq[parseInt(d.first)]=(timeFreq[parseInt(d.first)]||0)+1;
   });
 
-  // Çift/Tek denge
   var last10even=firstNums.slice(0,10).filter(function(x){return x%2===0;}).length;
   var evenBonus=last10even<=3?1:0;
 
-  // KOMBİNE SKOR
   var numScores={};
   for(var i=1;i<=48;i++){
     numScores[i]=
@@ -320,13 +295,11 @@ function predict(draws) {
       (i%2===0?evenBonus*10:0)*0.05;
   }
 
-  // İLK SAYI
   var filtered=Object.keys(numScores).map(Number);
   if(predOU==='OVER'){var ov=filtered.filter(function(x){return x>24;});if(ov.length>=5)filtered=ov;}
   else{var un=filtered.filter(function(x){return x<=24;});if(un.length>=5)filtered=un;}
   result.first_candidates=sortAsc(filtered.sort(function(a,b){return numScores[b]-numScores[a];}).slice(0,5));
 
-  // İLK 5
   var first5scores={};
   for(var i=1;i<=48;i++){
     first5scores[i]=
@@ -337,7 +310,6 @@ function predict(draws) {
   }
   result.first5_candidates=sortAsc(Object.keys(first5scores).map(Number).sort(function(a,b){return first5scores[b]-first5scores[a];}).slice(0,6));
 
-  // KESİN 8
   var kesinScores={};
   for(var i=1;i<=48;i++){
     kesinScores[i]=
@@ -347,7 +319,6 @@ function predict(draws) {
       (pairScores[i]/maxPair)*50*0.10;
   }
   result.certain8=sortAsc(Object.keys(kesinScores).map(Number).sort(function(a,b){return kesinScores[b]-kesinScores[a];}).slice(0,8));
-
   return result;
 }
 
@@ -425,10 +396,11 @@ function startDashboard() {
     p += 'h+="<div class=card style=border-color:"+pc+"66><div class=title>Renk Tahmini</div>";';
     p += 'if(cl.alert){h+="<div class=alert>"+cl.alert+"</div>";}';
     p += 'h+="<div class=big style=color:"+pc+">"+cl.pred+"</div><div class=conf>Guven: %"+cl.conf+"</div>";';
-    p += 'h+="<div style=margin-top:12px><div class=title>Son 30 Renk Dagilimi</div><div style=margin-top:6px>";';
+    p += 'h+="<div style=margin-top:12px><div class=title>Son 100 Cekilis Renk Dagilimi</div><div style=margin-top:6px>";';
     p += 'var cnames=["Sari","Yesil","Mavi","Kirmizi","Kahve","Turuncu","Siyah","Mor"];';
     p += 'cnames.forEach(function(cn){var cnt=cl.counts[cn]||0;var bg=CH[cn]||"#333";';
-    p += 'var op=cnt===0?1:cnt<=2?0.65:0.3;var shadow=cnt===0?"box-shadow:0 0 14px "+bg+";border:2px solid "+bg:"border:1px solid "+bg+"44";';
+    p += 'var expected=100/8;var op=cnt<=expected*0.5?1:cnt<=expected*0.8?0.65:0.3;';
+    p += 'var shadow=cnt===0?"box-shadow:0 0 14px "+bg+";border:2px solid "+bg:cnt<=expected*0.5?"border:2px solid "+bg+"aa":"border:1px solid "+bg+"44";';
     p += 'h+="<span class=cbox style=background:"+bg+";opacity:"+op+";"+shadow+">"+cn+" "+cnt+"</span>";});';
     p += 'h+="</div></div></div>";}';
     p += 'if(pr&&pr.first_candidates){h+="<div class=card><div class=title>Ilk Sayi - 5 Aday</div><div class=nums>";';
