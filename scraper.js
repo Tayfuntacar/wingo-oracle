@@ -181,7 +181,6 @@ function predict(draws) {
   var colorList = draws.map(function(d){ return d.color; });
   var n = draws.length;
 
-  // OVER/UNDER
   var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
   var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
   var last10over = firstNums.slice(0,10).filter(function(x){return x>24;}).length;
@@ -200,7 +199,6 @@ function predict(draws) {
   else{predOU=positionBias;ouConf=52;}
   result.over_under={pred:predOU,conf:ouConf};
 
-  // RENK - 100 çekiliş bazlı
   var recent100=colorList.slice(0,Math.min(100,n));
   var colorCount100={};ALL_COLORS.forEach(function(c){colorCount100[c]=0;});
   recent100.forEach(function(c){if(colorCount100[c]!==undefined)colorCount100[c]++;});
@@ -213,16 +211,15 @@ function predict(draws) {
   else if(coldColors.length===2)colorAlert='2 soguk renk mevcut';
   var colorScores={};
   ALL_COLORS.forEach(function(c){
-    var cold100 = (100/8 - colorCount100[c]) * 2;
-    var lastSeenBonus = Math.min(colorLastSeen[c], 50) * 2;
-    colorScores[c] = cold100 + lastSeenBonus;
+    var cold100=(100/8-colorCount100[c])*2;
+    var lastSeenBonus=Math.min(colorLastSeen[c],50)*2;
+    colorScores[c]=cold100+lastSeenBonus;
   });
-  var predColor = ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
-  if(coldColors.length > 0) predColor = coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0];
+  var predColor=ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
+  if(coldColors.length>0)predColor=coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0];
   var colorConf=coldColors.length>=4?82:coldColors.length>=3?68:coldColors.length===2?55:42;
   result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount100};
 
-  // SAYI SKORLARI
   var markov={};
   for(var i=0;i<Math.min(n-1,200);i++){
     var cur=firstNums[i+1];var nxt=firstNums[i];
@@ -231,7 +228,7 @@ function predict(draws) {
   }
   var lastFirst=firstNums[0];
   var markovTotal=0;
-  if(markov[lastFirst]) Object.keys(markov[lastFirst]).forEach(function(k){markovTotal+=markov[lastFirst][k];});
+  if(markov[lastFirst])Object.keys(markov[lastFirst]).forEach(function(k){markovTotal+=markov[lastFirst][k];});
   var markovScores={};
   for(var i=1;i<=48;i++){
     markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]&&markovTotal>0?(markov[lastFirst][i]/markovTotal)*100:0;
@@ -337,7 +334,7 @@ function startDashboard() {
       var total = parseInt(stats.total)||0;
       var overCount = parseInt(stats.over_count)||0;
       var overPct = total>0?Math.round(overCount/total*100):50;
-      res.json({last20:draws.slice(0,20),stats:{total:total,over_pct:overPct,under_pct:100-overPct},predictions:predict(draws)});
+      res.json({last200:draws,stats:{total:total,over_pct:overPct,under_pct:100-overPct},predictions:predict(draws)});
     }).catch(function(e){res.json({error:e.message});});
   });
 
@@ -369,7 +366,7 @@ function startDashboard() {
   app.get('/', function(req, res) {
     var p = '<!DOCTYPE html><html><head>';
     p += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WingoOracle</title>';
-    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:480px;margin:0 auto}';
+    p += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1e2130;color:#ffffff;font-family:Arial,sans-serif;padding:12px;max-width:520px;margin:0 auto}';
     p += 'h1{color:#ffffff;font-size:22px;margin-bottom:14px;text-align:center;font-weight:800;letter-spacing:2px}';
     p += '.card{background:#262a3a;border:1px solid #3a3f52;border-radius:14px;padding:14px;margin-bottom:10px}';
     p += '.title{font-size:11px;color:#aab0c4;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:700}';
@@ -377,21 +374,26 @@ function startDashboard() {
     p += '.big{font-size:34px;font-weight:900;margin:4px 0}.conf{font-size:13px;color:#aab0c4;margin-top:3px;font-weight:600}';
     p += '.nums{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}';
     p += '.num{border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#ffffff}';
-    p += '.row{display:grid;grid-template-columns:65px 45px 110px 70px;align-items:center;padding:9px 0;border-bottom:1px solid #3a3f52;font-size:13px}.row:last-child{border:none}';
+    p += '.row{display:grid;grid-template-columns:60px 38px 90px 60px 30px;align-items:center;padding:6px 0;border-bottom:1px solid #2a2f42;font-size:12px}.row:last-child{border:none}';
+    p += '.streak{display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700}';
     p += '.bar{height:7px;background:#3a3f52;border-radius:4px;margin:8px 0;overflow:hidden}.barfill{height:100%;border-radius:4px}';
     p += '.statrow{display:flex;justify-content:space-between;font-size:16px;font-weight:800;margin-bottom:4px}';
     p += '.alert{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.6);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff6b6b;font-weight:700}';
     p += '.cbox{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;font-size:12px;margin:3px;font-weight:800;color:#fff}';
     p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px;letter-spacing:1px}';
-    p += '.ref{color:#5a6180;font-size:11px;text-align:center;margin-top:10px}</style></head><body>';
+    p += '.ref{color:#5a6180;font-size:11px;text-align:center;margin-top:10px}';
+    p += '.hdr{display:grid;grid-template-columns:60px 38px 90px 60px 30px;padding:4px 0;font-size:10px;color:#5a6180;font-weight:600;border-bottom:1px solid #3a3f52;margin-bottom:4px}';
+    p += '</style></head><body>';
     p += '<h1>WINGO ORACLE</h1>';
     p += '<button class=btn onclick="window.location.href=\'/rapor\'">RAPOR</button>';
     p += '<div id="app"><div style="text-align:center;padding:40px;color:#5a6180">Yukleniyor...</div></div>';
     p += '<script type="text/javascript">var CH='+chStr+';';
     p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/data");xhr.onload=function(){try{';
     p += 'var d=JSON.parse(xhr.responseText);var pr=d.predictions;var h="";';
+    // OVER/UNDER
     p += 'if(pr&&pr.over_under){var ou=pr.over_under;var oc=ou.pred==="OVER"?"#22c55e":"#ef4444";';
     p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div class=title>Over / Under Tahmini</div><div class=big style=color:"+oc+">"+ou.pred+"</div><div class=conf>Guven: %"+ou.conf+"</div></div>";}';
+    // RENK
     p += 'if(pr&&pr.color){var cl=pr.color;var pc=CH[cl.pred]||"#fff";';
     p += 'h+="<div class=card style=border-color:"+pc+"66><div class=title>Renk Tahmini</div>";';
     p += 'if(cl.alert){h+="<div class=alert>"+cl.alert+"</div>";}';
@@ -403,19 +405,40 @@ function startDashboard() {
     p += 'var shadow=cnt===0?"box-shadow:0 0 14px "+bg+";border:2px solid "+bg:cnt<=expected*0.5?"border:2px solid "+bg+"aa":"border:1px solid "+bg+"44";';
     p += 'h+="<span class=cbox style=background:"+bg+";opacity:"+op+";"+shadow+">"+cn+" "+cnt+"</span>";});';
     p += 'h+="</div></div></div>";}';
+    // SAYILAR
     p += 'if(pr&&pr.first_candidates){h+="<div class=card><div class=title>Ilk Sayi - 5 Aday</div><div class=nums>";';
     p += 'pr.first_candidates.forEach(function(n){h+="<div class=num style=background:#1e3a5f;border:2px solid #3b82f6>"+n+"</div>";});h+="</div></div>";}';
     p += 'if(pr&&pr.first5_candidates){h+="<div class=card><div class=title>Ilk 5te Cikacak - 6 Aday</div><div class=nums>";';
     p += 'pr.first5_candidates.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});h+="</div></div>";}';
     p += 'if(pr&&pr.certain8){h+="<div class=card><div class=title>Kesin Cikacak - 8 Sayi</div><div class=nums>";';
     p += 'pr.certain8.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});h+="</div></div>";}';
+    // İSTATİSTİK
     p += 'if(d.stats){h+="<div class=card><div class=title>Istatistik ("+d.stats.total+" Round)</div>";';
     p += 'h+="<div class=statrow><span class=over>OVER %"+d.stats.over_pct+"</span><span class=under>UNDER %"+d.stats.under_pct+"</span></div>";';
     p += 'h+="<div class=bar><div class=barfill style=width:"+d.stats.over_pct+"%;background:#22c55e></div></div></div>";}';
-    p += 'if(d.last20){h+="<div class=card><div class=title>Son Cekilisler</div>";';
-    p += 'd.last20.forEach(function(r){var oc=r.over_under==="OVER"?"#22c55e":"#ef4444";var rc=CH[r.color]||"#aaa";';
-    p += 'h+="<div class=row><span style=color:#aab0c4;font-size:12px;font-weight:600>"+r.round+"</span><span style=font-weight:900;font-size:17px>"+r.first+"</span><span style=color:"+rc+";font-weight:800>"+r.color+"</span><span style=color:"+oc+";font-weight:900;text-align:right>"+r.over_under+"</span></div>";});';
-    p += 'h+="</div>";}h+="<div class=ref>Her 30 saniyede bir guncellenir</div>";';
+    // SON 200 ÇEKİLİŞ - streak göstergeli
+    p += 'if(d.last200&&d.last200.length>0){';
+    p += 'h+="<div class=card><div class=title>Son 200 Cekilis</div>";';
+    p += 'h+="<div class=hdr><span>Round</span><span>1.S</span><span>Renk</span><span>O/U</span><span>Seri</span></div>";';
+    p += 'var streak=1;';
+    p += 'for(var i=0;i<d.last200.length;i++){';
+    p += 'var r=d.last200[i];var next=d.last200[i+1];';
+    p += 'if(next&&next.over_under===r.over_under){streak++;}else{';
+    p += 'var oc=r.over_under==="OVER"?"#22c55e":"#ef4444";';
+    p += 'var rc=CH[r.color]||"#aaa";';
+    p += 'var sbg=streak>=5?"rgba(255,200,0,0.2)":streak>=3?"rgba(255,140,0,0.15)":"transparent";';
+    p += 'var sc=streak>=5?"#facc15":streak>=3?"#f97316":"#5a6180";';
+    p += 'h+="<div class=row style=background:"+sbg+">";';
+    p += 'h+="<span style=color:#aab0c4;font-size:11px>"+r.round+"</span>";';
+    p += 'h+="<span style=font-weight:900;font-size:14px>"+r.first+"</span>";';
+    p += 'h+="<span style=color:"+rc+";font-weight:700>"+r.color+"</span>";';
+    p += 'h+="<span style=color:"+oc+";font-weight:900>"+r.over_under+"</span>";';
+    p += 'h+="<span style=color:"+sc+";font-weight:800;font-size:11px>"+streak+"x</span>";';
+    p += 'h+="</div>";';
+    p += 'streak=1;}';
+    p += '}';
+    p += 'h+="</div>";}';
+    p += 'h+="<div class=ref>Her 30 saniyede bir guncellenir</div>";';
     p += 'document.getElementById("app").innerHTML=h;';
     p += '}catch(e){document.getElementById("app").innerHTML="<div style=color:#ef4444;padding:20px>Hata: "+e.message+"</div>";}';
     p += '};xhr.send();}load();setInterval(load,30000);';
