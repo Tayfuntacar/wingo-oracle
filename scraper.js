@@ -114,259 +114,315 @@ function saveNextPrediction(round) {
 
 function sortAsc(arr) { return arr.slice().sort(function(a,b){return a-b;}); }
 
-// Mevcut seri hesapla
-function calcStreak(firstNums) {
-  if (!firstNums || firstNums.length === 0) return {type:'OVER', count:1};
-  var last = firstNums[0] > 24 ? 'OVER' : 'UNDER';
-  var count = 1;
-  for (var i = 1; i < firstNums.length; i++) {
-    var cur = firstNums[i] > 24 ? 'OVER' : 'UNDER';
-    if (cur === last) count++;
+// ============================================================
+// YENİ TAHMİN MOTORU (v2)
+// ============================================================
+
+var COLOR_ORDER = ['Sari','Yesil','Mavi','Kirmizi','Kahve','Turuncu','Siyah','Mor'];
+
+var COLOR_MAP = {};
+for (var _i = 1; _i <= 48; _i++) {
+  COLOR_MAP[_i] = COLOR_ORDER[(_i - 1) % 8];
+}
+
+var COLOR_NUMS = {};
+COLOR_ORDER.forEach(function(c) { COLOR_NUMS[c] = []; });
+for (var _i2 = 1; _i2 <= 48; _i2++) {
+  COLOR_NUMS[COLOR_MAP[_i2]].push(_i2);
+}
+
+var GLOBAL_BIAS = {
+  26:1.66,14:1.52,33:1.43,21:1.35,27:1.35,
+  1:1.25,15:1.25,20:1.25,45:1.25,3:1.21,
+  38:1.21,19:1.21,11:1.17,22:1.17,24:1.15,
+  25:1.14,29:1.13,9:1.10,47:1.10,4:1.05,
+  41:1.05,44:1.05,23:1.01,36:1.01,28:1.00,
+  17:0.98,8:0.98,16:0.96,48:0.95,34:0.93,
+  12:0.90,42:0.90,18:0.90,31:0.90,39:0.88,
+  30:0.85,37:0.83,13:0.82,6:0.77,5:0.77,
+  46:0.77,40:0.77,10:0.77,7:0.72,35:0.68,
+  32:0.68,2:0.68,43:0.60
+};
+
+function computeScores(history) {
+  var n = history.length;
+  var scores = {};
+  for (var i = 1; i <= 48; i++) scores[i] = 0;
+
+  for (var num = 1; num <= 48; num++) {
+    var bias = GLOBAL_BIAS[num] || 1.0;
+    scores[num] += Math.log(bias + 0.5) * 2.5;
+  }
+
+  var seenAt = {};
+  for (var i = 0; i < n; i++) {
+    var num = history[i].first;
+    if (!seenAt[num]) seenAt[num] = [];
+    seenAt[num].push(i);
+  }
+
+  for (var num = 1; num <= 48; num++) {
+    var apps = seenAt[num] || [];
+    if (apps.length > 0) {
+      var wait = n - 1 - apps[apps.length - 1];
+      var avgInterval = 40;
+      if (apps.length >= 2) {
+        var ivs = [];
+        for (var j = 1; j < apps.length; j++) ivs.push(apps[j] - apps[j-1]);
+        var recent = ivs.slice(-5);
+        avgInterval = recent.reduce(function(a,b){return a+b;},0) / recent.length;
+      }
+      var ratio = wait / Math.max(avgInterval, 1);
+      scores[num] += 4.5 * Math.tanh(ratio * 0.65);
+    } else {
+      scores[num] += 4.5;
+    }
+  }
+
+  var colorAfter = {};
+  COLOR_ORDER.forEach(function(c) { colorAfter[c] = {}; });
+  for (var i = 0; i < n - 1; i++) {
+    var c1 = history[i].color;
+    var c2 = history[i+1].color;
+    colorAfter[c1][c2] = (colorAfter[c1][c2] || 0) + 1;
+  }
+
+  var lastColor = history[n-1].color;
+  var streak = 1;
+  for (var i = n-2; i >= Math.max(n-8, 0); i--) {
+    if (history[i].color === lastColor) streak++;
     else break;
   }
-  return {type: last, count: count};
-}
 
-function monteCarlo(draws, simCount) {
-  var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
-  var numProb = {};
-  for(var i=1;i<=48;i++) numProb[i] = 1;
-  allNums.forEach(function(balls, di) {
-    balls.forEach(function(num, bi) {
-      var weight = 1/(di+1) * (1/(bi+1)*2 + 0.5);
-      numProb[num] = (numProb[num]||1) + weight;
-    });
-  });
-  var totalProb = 0;
-  for(var i=1;i<=48;i++) totalProb += numProb[i];
-  var probs = [];
-  for(var i=1;i<=48;i++) probs.push({n:i, p:numProb[i]/totalProb});
-  probs.sort(function(a,b){return b.p-a.p;});
-  var firstCount = {};
-  var top5Count = {};
-  for(var i=1;i<=48;i++) { firstCount[i]=0; top5Count[i]=0; }
-  var seed = draws.length * 31 + parseInt(draws[0].first) * 17;
-  for(var sim=0; sim<simCount; sim++) {
-    var pool = probs.slice();
-    var drawn = [];
-    for(var k=0;k<35;k++) {
-      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
-      var r = Math.abs(seed) / 0xffffffff;
-      var cum = 0;
-      var chosen = pool[0];
-      for(var m=0;m<pool.length;m++) {
-        cum += pool[m].p;
-        if(r <= cum) { chosen = pool[m]; break; }
+  var colorProbs = {};
+  COLOR_ORDER.forEach(function(c) { colorProbs[c] = 1/8; });
+
+  if (colorAfter[lastColor] && Object.keys(colorAfter[lastColor]).length > 0) {
+    var total = Object.values(colorAfter[lastColor]).reduce(function(a,b){return a+b;}, 0);
+    var raw = {};
+    Object.keys(colorAfter[lastColor]).forEach(function(c) {
+      var cnt = colorAfter[lastColor][c];
+      var p = cnt / total;
+      if (c === lastColor) {
+        var penalties = [1, 0.80, 0.45, 0.20, 0.10];
+        p *= penalties[Math.min(streak - 1, 4)];
       }
-      drawn.push(chosen.n);
-      pool = pool.filter(function(x){return x.n !== chosen.n;});
-      var newTotal = pool.reduce(function(s,x){return s+x.p;},0);
-      if(newTotal > 0) pool = pool.map(function(x){return {n:x.n,p:x.p/newTotal};});
+      raw[c] = p;
+    });
+    var s = Object.values(raw).reduce(function(a,b){return a+b;}, 0);
+    if (s > 0) {
+      COLOR_ORDER.forEach(function(c) { colorProbs[c] = (raw[c] || 0.01) / s; });
     }
-    firstCount[drawn[0]]++;
-    drawn.slice(0,5).forEach(function(n){top5Count[n]++;});
   }
-  return {firstCount:firstCount, top5Count:top5Count};
-}
 
-function pairAnalysis(draws) {
-  var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
-  var pairs = {};
-  allNums.forEach(function(balls) {
-    var first5 = balls.slice(0,5);
-    first5.forEach(function(a) {
-      first5.forEach(function(b) {
-        if(a !== b) {
-          var key = Math.min(a,b)+'-'+Math.max(a,b);
-          pairs[key] = (pairs[key]||0) + 1;
+  for (var num = 1; num <= 48; num++) {
+    var c = COLOR_MAP[num];
+    scores[num] += 3.0 * colorProbs[c] * 8;
+  }
+
+  COLOR_ORDER.forEach(function(c) {
+    var numsInC = COLOR_NUMS[c];
+    var cApps = {};
+    var cIdx = 0;
+    history.forEach(function(r) {
+      if (numsInC.indexOf(r.first) !== -1) {
+        if (!cApps[r.first]) cApps[r.first] = [];
+        cApps[r.first].push(cIdx);
+        cIdx++;
+      }
+    });
+
+    numsInC.forEach(function(num) {
+      var apps = cApps[num] || [];
+      if (apps.length > 0) {
+        var wait = cIdx - 1 - apps[apps.length - 1];
+        var avgIv = 6;
+        if (apps.length >= 2) {
+          var ivs = [];
+          for (var j = 1; j < apps.length; j++) ivs.push(apps[j] - apps[j-1]);
+          avgIv = ivs.reduce(function(a,b){return a+b;},0) / ivs.length;
         }
-      });
+        scores[num] += 2.0 * Math.tanh(wait / Math.max(avgIv, 1) * 0.5);
+      } else {
+        scores[num] += 2.0;
+      }
     });
   });
-  return pairs;
+
+  var numAfter = {};
+  for (var i = 0; i < n - 1; i++) {
+    var a = history[i].first;
+    var b = history[i+1].first;
+    if (!numAfter[a]) numAfter[a] = {};
+    numAfter[a][b] = (numAfter[a][b] || 0) + 1;
+  }
+
+  var lastNum = history[n-1].first;
+  if (numAfter[lastNum]) {
+    var total2 = Object.values(numAfter[lastNum]).reduce(function(a,b){return a+b;}, 0);
+    if (total2 >= 5) {
+      Object.keys(numAfter[lastNum]).forEach(function(num) {
+        var cnt = numAfter[lastNum][num];
+        scores[parseInt(num)] += 2.0 * (cnt / total2) * 10;
+      });
+    }
+  }
+
+  var last30 = history.slice(-30).map(function(r){return r.first;});
+  var freq30 = {};
+  last30.forEach(function(n) { freq30[n] = (freq30[n] || 0) + 1; });
+  var exp30 = 30 / 48;
+  for (var num = 1; num <= 48; num++) {
+    var f = freq30[num] || 0;
+    if (f < exp30 * 0.5) scores[num] += 0.8;
+  }
+
+  return scores;
+}
+
+function predictColorV2(history) {
+  var colorAfter = {};
+  COLOR_ORDER.forEach(function(c) { colorAfter[c] = {}; });
+  for (var i = 0; i < history.length - 1; i++) {
+    var c1 = history[i].color;
+    var c2 = history[i+1].color;
+    colorAfter[c1][c2] = (colorAfter[c1][c2] || 0) + 1;
+  }
+
+  var lastColor = history[history.length-1].color;
+  var streak = 1;
+  for (var i = history.length - 2; i >= Math.max(history.length - 8, 0); i--) {
+    if (history[i].color === lastColor) streak++;
+    else break;
+  }
+
+  var bestColor = lastColor;
+  var bestProb = 0;
+  var colorProbs = {};
+
+  if (colorAfter[lastColor] && Object.keys(colorAfter[lastColor]).length > 0) {
+    var total = Object.values(colorAfter[lastColor]).reduce(function(a,b){return a+b;}, 0);
+    Object.keys(colorAfter[lastColor]).forEach(function(c) {
+      var cnt = colorAfter[lastColor][c];
+      var p = cnt / total;
+      if (c === lastColor) {
+        var penalties = [1, 0.80, 0.45, 0.20, 0.10];
+        p *= penalties[Math.min(streak - 1, 4)];
+      }
+      colorProbs[c] = p;
+    });
+    var s = Object.values(colorProbs).reduce(function(a,b){return a+b;}, 0);
+    Object.keys(colorProbs).forEach(function(c) { colorProbs[c] /= s; });
+  } else {
+    COLOR_ORDER.forEach(function(c) { colorProbs[c] = 1/8; });
+  }
+
+  Object.keys(colorProbs).forEach(function(c) {
+    if (colorProbs[c] > bestProb) { bestProb = colorProbs[c]; bestColor = c; }
+  });
+
+  return { color: bestColor, prob: bestProb, streak: streak, colorProbs: colorProbs };
 }
 
 function predict(draws) {
   var result = {};
   if (!draws || draws.length < 5) return result;
-  var allNums = draws.map(function(d){ return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
+
+  var history = draws.map(function(d) {
+    return {
+      first: parseInt(d.first),
+      color: d.color || COLOR_MAP[parseInt(d.first)] || 'Sari'
+    };
+  }).reverse();
+
+  var n = history.length;
   var firstNums = draws.map(function(d){ return parseInt(d.first); });
-  var colorList = draws.map(function(d){ return d.color; });
-  var n = draws.length;
 
-  // ── SERİ ANALİZİ ────────────────────────
-  var streak = calcStreak(firstNums);
-  var predOU, ouConf, streakNote = '';
+  var scores = computeScores(history);
+  var sorted = Object.keys(scores).map(function(k){ return {n:parseInt(k), s:scores[k]}; })
+                                  .sort(function(a,b){return b.s-a.s;});
 
-  if (streak.count >= 7) {
-    // 7x ve üzeri - KESİNLİKLE karşı tarafa
-    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
+  var last20 = history.slice(-20);
+  var over20 = last20.filter(function(r){return r.first > 24;}).length;
+  var predOU = over20 < 10 ? 'OVER' : (over20 > 10 ? 'UNDER' : 'OVER');
+
+  var streakType = firstNums[0] > 24 ? 'OVER' : 'UNDER';
+  var streakCount = 1;
+  for (var i = 1; i < firstNums.length; i++) {
+    var cur = firstNums[i] > 24 ? 'OVER' : 'UNDER';
+    if (cur === streakType) streakCount++;
+    else break;
+  }
+
+  var ouConf = 55;
+  var streakNote = '';
+  if (streakCount >= 7) {
+    predOU = streakType === 'OVER' ? 'UNDER' : 'OVER';
     ouConf = 88;
-    streakNote = streak.type + ' ' + streak.count + 'x seri! DONUYOR';
-  } else if (streak.count >= 5) {
-    // 5-6x - karşı tarafa geç
-    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
+    streakNote = streakType + ' ' + streakCount + 'x seri! DONUYOR';
+  } else if (streakCount >= 5) {
+    predOU = streakType === 'OVER' ? 'UNDER' : 'OVER';
     ouConf = 80;
-    streakNote = streak.type + ' ' + streak.count + 'x seri, karsi tarafa geciliyor';
-  } else if (streak.count >= 3) {
-    // 3-4x - seri devam etme ihtimali hala var ama azalıyor
-    var last10over = firstNums.slice(0,10).filter(function(x){return x>24;}).length;
-    var overPct = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
-    if (streak.count === 4) {
-      // 4x - artık dönüş yakın
-      predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
-      ouConf = 68;
-      streakNote = streak.type + ' ' + streak.count + 'x seri, donus yaklasıyor';
-    } else {
-      // 3x - devam edebilir
-      predOU = streak.type;
-      ouConf = 62;
-      streakNote = streak.type + ' ' + streak.count + 'x seri, devam edebilir';
-    }
-  } else if (streak.count === 2) {
-    // 2x - seri devam ihtimali var
-    predOU = streak.type;
+    streakNote = streakType + ' ' + streakCount + 'x seri, karsi tarafa geciliyor';
+  } else if (streakCount === 4) {
+    predOU = streakType === 'OVER' ? 'UNDER' : 'OVER';
+    ouConf = 68;
+    streakNote = streakType + ' ' + streakCount + 'x seri, donus yaklasıyor';
+  } else if (streakCount === 3) {
+    predOU = streakType;
+    ouConf = 62;
+    streakNote = streakType + ' ' + streakCount + 'x seri, devam edebilir';
+  } else if (streakCount === 2) {
+    predOU = streakType;
     ouConf = 58;
-    streakNote = streak.type + ' ' + streak.count + 'x seri';
+    streakNote = streakType + ' ' + streakCount + 'x seri';
   } else {
-    // 1x - genel istatistikle devam
-    var last3over = firstNums.slice(0,3).filter(function(x){return x>24;}).length;
-    var last5over = firstNums.slice(0,5).filter(function(x){return x>24;}).length;
-    var overPct2 = Math.round(firstNums.filter(function(x){return x>24;}).length/n*100);
-    var lowFirst = firstNums.filter(function(x){return x<=24;}).length;
-    predOU = lowFirst > n/2 ? 'UNDER' : 'OVER';
-    ouConf = 52;
-    if(last3over===3){predOU='UNDER';ouConf=65;}
-    else if(last3over===0){predOU='OVER';ouConf=65;}
-    else if(last5over>=4){predOU='UNDER';ouConf=60;}
-    else if(last5over<=1){predOU='OVER';ouConf=60;}
-    else if(overPct2>58){predOU='UNDER';ouConf=55;}
-    else if(overPct2<42){predOU='OVER';ouConf=55;}
+    ouConf = 55;
   }
 
-  result.over_under = {pred:predOU, conf:ouConf, streak:streak, note:streakNote};
+  // Bir sonraki round numarası
+  var nextRound = draws.length > 0 ? parseInt(draws[0].round) + 1 : 0;
 
-  // ── RENK ────────────────────────────────
-  var recent100=colorList.slice(0,Math.min(100,n));
-  var colorCount100={};ALL_COLORS.forEach(function(c){colorCount100[c]=0;});
-  recent100.forEach(function(c){if(colorCount100[c]!==undefined)colorCount100[c]++;});
-  var colorLastSeen={};ALL_COLORS.forEach(function(c){colorLastSeen[c]=999;});
-  colorList.forEach(function(c,i){if(colorLastSeen[c]===999)colorLastSeen[c]=i;});
-  var coldColors=ALL_COLORS.filter(function(c){return colorCount100[c]===0;});
-  var colorAlert='';
-  if(coldColors.length>=4)colorAlert='KRITIK: '+coldColors.length+' renk hic ilk dusmedi!';
-  else if(coldColors.length===3)colorAlert='DIKKAT: 3 soguk renk, biri yakinda gelecek';
-  else if(coldColors.length===2)colorAlert='2 soguk renk mevcut';
-  var colorScores={};
-  ALL_COLORS.forEach(function(c){
-    var cold100=(100/8-colorCount100[c])*2;
-    var lastSeenBonus=Math.min(colorLastSeen[c],50)*2;
-    colorScores[c]=cold100+lastSeenBonus;
-  });
-  var predColor=ALL_COLORS.slice().sort(function(a,b){return colorScores[b]-colorScores[a];})[0];
-  if(coldColors.length>0)predColor=coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0];
-  var colorConf=coldColors.length>=4?82:coldColors.length>=3?68:coldColors.length===2?55:42;
-  result.color={pred:predColor,conf:colorConf,alert:colorAlert,counts:colorCount100};
+  result.over_under = {
+    pred: predOU,
+    conf: ouConf,
+    streak: { type: streakType, count: streakCount },
+    note: streakNote,
+    next_round: nextRound
+  };
 
-  // ── SAYI SKORLARI ────────────────────────
-  var markov={};
-  for(var i=0;i<Math.min(n-1,200);i++){
-    var cur=firstNums[i+1];var nxt=firstNums[i];
-    if(!markov[cur])markov[cur]={};
-    markov[cur][nxt]=(markov[cur][nxt]||0)+1;
+  var colorPred = predictColorV2(history);
+  var confPct = Math.round(colorPred.prob * 100);
+  result.color = {
+    pred: colorPred.color,
+    conf: confPct,
+    alert: colorPred.streak >= 4 ? colorPred.color + ' ' + colorPred.streak + 'x streak!' : '',
+    counts: (function(){
+      var cnt = {};
+      ALL_COLORS.forEach(function(c){ cnt[c] = 0; });
+      draws.slice(0,100).forEach(function(d){ if(cnt[d.color]!==undefined) cnt[d.color]++; });
+      return cnt;
+    })()
+  };
+
+  var filtered = sorted.slice();
+  if (predOU === 'OVER') {
+    var ov = filtered.filter(function(x){return x.n > 24;});
+    if (ov.length >= 5) filtered = ov;
+  } else {
+    var un = filtered.filter(function(x){return x.n <= 24;});
+    if (un.length >= 5) filtered = un;
   }
-  var lastFirst=firstNums[0];
-  var markovTotal=0;
-  if(markov[lastFirst])Object.keys(markov[lastFirst]).forEach(function(k){markovTotal+=markov[lastFirst][k];});
-  var markovScores={};
-  for(var i=1;i<=48;i++){
-    markovScores[i]=markov[lastFirst]&&markov[lastFirst][i]&&markovTotal>0?(markov[lastFirst][i]/markovTotal)*100:0;
-  }
+  result.first_candidates = sortAsc(filtered.slice(0,5).map(function(x){return x.n;}));
+  result.first5_candidates = sortAsc(sorted.slice(0,6).map(function(x){return x.n;}));
+  result.certain8 = sortAsc(sorted.slice(0,8).map(function(x){return x.n;}));
 
-  var w1=0.30,w2=0.25,w3=0.25,w4=0.20;
-  var freq={};for(var i=1;i<=48;i++)freq[i]=0;
-  firstNums.forEach(function(num){freq[num]++;});
-  var numLastSeen={};for(var i=1;i<=48;i++)numLastSeen[i]=999;
-  firstNums.forEach(function(num,idx){if(numLastSeen[num]===999)numLastSeen[num]=idx;});
-  var maxFreq=Math.max.apply(null,Object.keys(freq).map(function(k){return freq[k];}))||1;
-  var hybridScores={};
-  for(var i=1;i<=48;i++){
-    var freqScore=(maxFreq-freq[i])/maxFreq*100;
-    var recencyScore=Math.min(numLastSeen[i],50)*2;
-    var gapAvg=n/(freq[i]||1);
-    var gapScore=numLastSeen[i]>=gapAvg?80:20;
-    var recent10=firstNums.slice(0,10);
-    var trendScore=recent10.indexOf(i)===-1?60:20;
-    hybridScores[i]=w1*freqScore+w2*recencyScore+w3*gapScore+w4*trendScore;
-  }
-
-  var mc=monteCarlo(draws,3000);
-  var mcFirstMax=Math.max.apply(null,Object.keys(mc.firstCount).map(function(k){return mc.firstCount[k];}))||1;
-  var mcTop5Max=Math.max.apply(null,Object.keys(mc.top5Count).map(function(k){return mc.top5Count[k];}))||1;
-
-  var pairs=pairAnalysis(draws);
-  var pairScores={};for(var i=1;i<=48;i++)pairScores[i]=0;
-  Object.keys(pairs).forEach(function(key){
-    var parts=key.split('-').map(Number);
-    if(parts[0]===lastFirst||parts[1]===lastFirst){
-      var other=parts[0]===lastFirst?parts[1]:parts[0];
-      pairScores[other]=(pairScores[other]||0)+pairs[key];
-    }
-  });
-  var maxPair=Math.max.apply(null,Object.values(pairScores))||1;
-
-  var neighborBonus={};
-  for(var i=1;i<=48;i++){var dist=Math.abs(i-lastFirst);neighborBonus[i]=dist<=3&&dist>0?(4-dist)*4:0;}
-
-  var hour=new Date().getUTCHours()+3;if(hour>=24)hour-=24;
-  var timeFreq={};for(var i=1;i<=48;i++)timeFreq[i]=0;
-  draws.forEach(function(d){
-    if(!d.created_at)return;
-    var h=new Date(d.created_at).getUTCHours()+3;if(h>=24)h-=24;
-    if(Math.abs(h-hour)<=2)timeFreq[parseInt(d.first)]=(timeFreq[parseInt(d.first)]||0)+1;
-  });
-
-  var last10even=firstNums.slice(0,10).filter(function(x){return x%2===0;}).length;
-  var evenBonus=last10even<=3?1:0;
-
-  var numScores={};
-  for(var i=1;i<=48;i++){
-    numScores[i]=
-      hybridScores[i]*0.30+
-      markovScores[i]*0.25+
-      (mc.firstCount[i]/mcFirstMax)*100*0.20+
-      (pairScores[i]/maxPair)*50*0.10+
-      neighborBonus[i]*0.05+
-      (timeFreq[i]||0)*5*0.05+
-      (i%2===0?evenBonus*10:0)*0.05;
-  }
-
-  var filtered=Object.keys(numScores).map(Number);
-  if(predOU==='OVER'){var ov=filtered.filter(function(x){return x>24;});if(ov.length>=5)filtered=ov;}
-  else{var un=filtered.filter(function(x){return x<=24;});if(un.length>=5)filtered=un;}
-  result.first_candidates=sortAsc(filtered.sort(function(a,b){return numScores[b]-numScores[a];}).slice(0,5));
-
-  var first5scores={};
-  for(var i=1;i<=48;i++){
-    first5scores[i]=
-      (mc.top5Count[i]/mcTop5Max)*100*0.40+
-      hybridScores[i]*0.30+
-      (pairScores[i]/maxPair)*50*0.20+
-      (timeFreq[i]||0)*5*0.10;
-  }
-  result.first5_candidates=sortAsc(Object.keys(first5scores).map(Number).sort(function(a,b){return first5scores[b]-first5scores[a];}).slice(0,6));
-
-  var kesinScores={};
-  for(var i=1;i<=48;i++){
-    kesinScores[i]=
-      (mc.top5Count[i]/mcTop5Max)*100*0.45+
-      hybridScores[i]*0.30+
-      markovScores[i]*0.15+
-      (pairScores[i]/maxPair)*50*0.10;
-  }
-  result.certain8=sortAsc(Object.keys(kesinScores).map(Number).sort(function(a,b){return kesinScores[b]-kesinScores[a];}).slice(0,8));
   return result;
 }
+
+// ============================================================
+// DASHBOARD
+// ============================================================
 
 function startDashboard() {
   var app = express();
@@ -424,14 +480,17 @@ function startDashboard() {
     p += '.streak-info{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700}';
     p += '.nums{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}';
     p += '.num{border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#ffffff}';
-    p += '.row{display:grid;grid-template-columns:60px 38px 90px 60px 30px;align-items:center;padding:6px 0;border-bottom:1px solid #2a2f42;font-size:12px}.row:last-child{border:none}';
+    // SON 200 tablosu: seri sütunu kaldırıldı, 4 sütun
+    p += '.row{display:grid;grid-template-columns:70px 44px 110px 70px;align-items:center;padding:6px 0;border-bottom:1px solid #2a2f42;font-size:12px}.row:last-child{border:none}';
     p += '.bar{height:7px;background:#3a3f52;border-radius:4px;margin:8px 0;overflow:hidden}.barfill{height:100%;border-radius:4px}';
     p += '.statrow{display:flex;justify-content:space-between;font-size:16px;font-weight:800;margin-bottom:4px}';
     p += '.alert{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.6);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff6b6b;font-weight:700}';
     p += '.cbox{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;font-size:12px;margin:3px;font-weight:800;color:#fff}';
     p += '.btn{display:block;width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px;letter-spacing:1px}';
     p += '.ref{color:#5a6180;font-size:11px;text-align:center;margin-top:10px}';
-    p += '.hdr{display:grid;grid-template-columns:60px 38px 90px 60px 30px;padding:4px 0;font-size:10px;color:#5a6180;font-weight:600;border-bottom:1px solid #3a3f52;margin-bottom:4px}';
+    // SON 200 başlık: seri sütunu kaldırıldı, 4 sütun
+    p += '.hdr{display:grid;grid-template-columns:70px 44px 110px 70px;padding:4px 0;font-size:10px;color:#5a6180;font-weight:600;border-bottom:1px solid #3a3f52;margin-bottom:4px}';
+    p += '.next-round{display:inline-block;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.5);border-radius:6px;padding:3px 10px;font-size:13px;font-weight:700;color:#60a5fa;margin-bottom:6px}';
     p += '</style></head><body>';
     p += '<h1>WINGO ORACLE</h1>';
     p += '<button class=btn onclick="window.location.href=\'/rapor\'">RAPOR</button>';
@@ -439,9 +498,12 @@ function startDashboard() {
     p += '<script type="text/javascript">var CH='+chStr+';';
     p += 'function load(){var xhr=new XMLHttpRequest();xhr.open("GET","/data");xhr.onload=function(){try{';
     p += 'var d=JSON.parse(xhr.responseText);var pr=d.predictions;var h="";';
-    // OVER/UNDER - seri bilgisiyle
+
+    // OVER/UNDER - sıradaki round numarasıyla (solda)
     p += 'if(pr&&pr.over_under){var ou=pr.over_under;var oc=ou.pred==="OVER"?"#22c55e":"#ef4444";';
-    p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div class=title>Over / Under Tahmini</div>";';
+    p += 'h+="<div class=card style=border-color:"+(ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)")+"><div style=display:flex;align-items:center;gap:10px;margin-bottom:10px>";';
+    p += 'if(ou.next_round){h+="<div class=next-round>Round #"+ou.next_round+"</div>";}';
+    p += 'h+="<div class=title style=margin-bottom:0>Over / Under Tahmini</div></div>";';
     p += 'h+="<div class=big style=color:"+oc+">"+ou.pred+"</div>";';
     p += 'h+="<div class=conf>Guven: %"+ou.conf+"</div>";';
     p += 'if(ou.streak){';
@@ -452,6 +514,7 @@ function startDashboard() {
     p += 'if(ou.note)h+=" — "+ou.note;';
     p += 'h+="</div>";}';
     p += 'h+="</div>";}';
+
     // RENK
     p += 'if(pr&&pr.color){var cl=pr.color;var pc=CH[cl.pred]||"#fff";';
     p += 'h+="<div class=card style=border-color:"+pc+"66><div class=title>Renk Tahmini</div>";';
@@ -464,6 +527,7 @@ function startDashboard() {
     p += 'var shadow=cnt===0?"box-shadow:0 0 14px "+bg+";border:2px solid "+bg:cnt<=expected*0.5?"border:2px solid "+bg+"aa":"border:1px solid "+bg+"44";';
     p += 'h+="<span class=cbox style=background:"+bg+";opacity:"+op+";"+shadow+">"+cn+" "+cnt+"</span>";});';
     p += 'h+="</div></div></div>";}';
+
     // SAYILAR
     p += 'if(pr&&pr.first_candidates){h+="<div class=card><div class=title>Ilk Sayi - 5 Aday</div><div class=nums>";';
     p += 'pr.first_candidates.forEach(function(n){h+="<div class=num style=background:#1e3a5f;border:2px solid #3b82f6>"+n+"</div>";});h+="</div></div>";}';
@@ -471,32 +535,31 @@ function startDashboard() {
     p += 'pr.first5_candidates.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});h+="</div></div>";}';
     p += 'if(pr&&pr.certain8){h+="<div class=card><div class=title>Kesin Cikacak - 8 Sayi</div><div class=nums>";';
     p += 'pr.certain8.forEach(function(n){h+="<div class=num style=background:#2a3040;border:1px solid #4a5270>"+n+"</div>";});h+="</div></div>";}';
+
     // İSTATİSTİK
     p += 'if(d.stats){h+="<div class=card><div class=title>Istatistik ("+d.stats.total+" Round)</div>";';
     p += 'h+="<div class=statrow><span class=over>OVER %"+d.stats.over_pct+"</span><span class=under>UNDER %"+d.stats.under_pct+"</span></div>";';
     p += 'h+="<div class=bar><div class=barfill style=width:"+d.stats.over_pct+"%;background:#22c55e></div></div></div>";}';
-    // SON 200 ÇEKİLİŞ
+
+    // SON 200 ÇEKİLİŞ - eskiden yeniye sıralı, seri sütunu yok, her satır gösterilir
     p += 'if(d.last200&&d.last200.length>0){';
-    p += 'h+="<div class=card><div class=title>Son 200 Cekilis</div>";';
-    p += 'h+="<div class=hdr><span>Round</span><span>1.S</span><span>Renk</span><span>O/U</span><span>Seri</span></div>";';
-    p += 'var streak=1;';
-    p += 'for(var i=0;i<d.last200.length;i++){';
-    p += 'var r=d.last200[i];var next=d.last200[i+1];';
-    p += 'if(next&&next.over_under===r.over_under){streak++;}else{';
+    p += 'h+="<div class=card><div class=title>Son 200 Cekilis (Yeniden Eskiye)</div>";';
+    p += 'h+="<div class=hdr><span>Round</span><span>1.Sayi</span><span>Renk</span><span>O/U</span></div>";';
+    // DB'den DESC geliyor (yeni->eski), aynen kullan
+    p += 'var sorted200=d.last200.slice();';
+    p += 'for(var i=0;i<sorted200.length;i++){';
+    p += 'var r=sorted200[i];';
     p += 'var oc2=r.over_under==="OVER"?"#22c55e":"#ef4444";';
     p += 'var rc=CH[r.color]||"#aaa";';
-    p += 'var sbg2=streak>=7?"rgba(239,68,68,0.2)":streak>=5?"rgba(249,115,22,0.15)":streak>=3?"rgba(250,204,21,0.08)":"transparent";';
-    p += 'var sc2=streak>=7?"#ef4444":streak>=5?"#f97316":streak>=3?"#facc15":"#5a6180";';
-    p += 'h+="<div class=row style=background:"+sbg2+">";';
-    p += 'h+="<span style=color:#aab0c4;font-size:11px>"+r.round+"</span>";';
+    p += 'h+="<div class=row>";';
+    p += 'h+="<span style=color:#aab0c4;font-size:11px>#"+r.round+"</span>";';
     p += 'h+="<span style=font-weight:900;font-size:14px>"+r.first+"</span>";';
     p += 'h+="<span style=color:"+rc+";font-weight:700>"+r.color+"</span>";';
     p += 'h+="<span style=color:"+oc2+";font-weight:900>"+r.over_under+"</span>";';
-    p += 'h+="<span style=color:"+sc2+";font-weight:800;font-size:11px>"+streak+"x</span>";';
     p += 'h+="</div>";';
-    p += 'streak=1;}';
     p += '}';
     p += 'h+="</div>";}';
+
     p += 'h+="<div class=ref>Her 30 saniyede bir guncellenir</div>";';
     p += 'document.getElementById("app").innerHTML=h;';
     p += '}catch(e){document.getElementById("app").innerHTML="<div style=color:#ef4444;padding:20px>Hata: "+e.message+"</div>";}';
@@ -553,27 +616,22 @@ function startDashboard() {
     p += 'h+="<div class=drow>";';
     p += 'h+="<div class=dtop><span style=color:#aab0c4;font-size:12px>Round "+r.round+"</span>";';
     p += 'h+="<span>1.S: <b style=font-size:16px>"+r.actual_first+"</b> <span style=color:"+rc+">"+r.actual_color+"</span> <span style=color:"+ouc+">"+ous+"</span></span></div>";';
-    p += 'h+="<div style=margin-bottom:6px><span style=font-size:11px;color:#aab0c4>Gercek Ilk 5: </span>";';
-    p += 'af5.forEach(function(n){h+="<span class=ns nreal>"+n+"</span>";});';
-    p += 'h+="</div>";';
-    p += 'h+="<div style=margin-bottom:6px><span style=font-size:11px;color:#aab0c4>Ilk 5 Adayim ("+fm+"/5): </span>";';
-    p += 'pf5.forEach(function(n){var hit=af5.indexOf(n)!==-1;var cls=hit?"ns nhit":"ns nmiss";h+="<span class="+cls+">"+n+"</span>";});';
-    p += 'h+="</div>";';
-    p += 'h+="<div><span style=font-size:11px;color:#aab0c4>Kesin 8 ("+cm+"/5): </span>";';
-    p += 'pc8.forEach(function(n){var hit=af5.indexOf(n)!==-1;var cls=hit?"ns nhit":"ns nmiss";h+="<span class="+cls+">"+n+"</span>";});';
-    p += 'h+="</div></div>";});';
+    p += 'if(af5.length>0){';
+    p += 'h+="<div style=margin-bottom:6px><span style=font-size:10px;color:#5a6180;margin-right:6px>GERCEK ILK5:</span>";';
+    p += 'af5.forEach(function(n){h+="<span class=ns nreal>"+n+"</span>";});h+="</div>";';
+    p += 'h+="<div style=margin-bottom:4px><span style=font-size:10px;color:#5a6180;margin-right:6px>TAHMIN 6:</span>";';
+    p += 'pf5.forEach(function(n){var hit=af5.indexOf(n)!==-1;h+="<span class=ns style= class="+(hit?"nhit":"nmiss")+">"+n+"</span>";});h+="</div>";}';
+    p += 'h+="<div style=font-size:11px;color:#aab0c4>5\'te "+fm+"/6 tahmin tuttu | 8\'de "+cm+"/8 tahmin tuttu</div>";';
+    p += 'h+="</div>";});';
     p += 'h+="</div>";}';
-    p += 'else{h+="<div class=card style=text-align:center;padding:30px;color:#5a6180>Henuz yeterli veri yok.</div>";}';
     p += 'document.getElementById("app").innerHTML=h;';
-    p += '}catch(e){document.getElementById("app").innerHTML="Hata: "+e.message;}';
+    p += '}catch(e){document.getElementById("app").innerHTML="<div style=color:#ef4444;padding:20px>Hata: "+e.message+"</div>";}';
     p += '};xhr.send();}load();';
     p += '</sc'+'ript></body></html>';
     res.type('html');
     res.end(p);
   });
 
-  var PORT = process.env.PORT || 3000;
-  app.listen(PORT, function() { console.log('Dashboard: http://localhost:' + PORT); });
+  var port = process.env.PORT || 3000;
+  app.listen(port, function() { console.log('Dashboard: http://localhost:' + port); });
 }
-
-console.log('Basliyor...');
