@@ -29,6 +29,8 @@ db.connect().then(function() {
 }).then(function() {
   return db.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain8_match INT DEFAULT -1');
 }).then(function() {
+  return db.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain8_full_match INT DEFAULT -1');
+}).then(function() {
   console.log('Tablolar hazir!');
   return loadCacheFromDB();
 }).then(function() {
@@ -74,7 +76,6 @@ function connect() {
           headers: { 'Origin': 'https://www.volcanobet.me' },
           rejectUnauthorized: false
         });
-
         w.on('open', function() {
           console.log('WebSocket baglandi!');
           w.send('{"protocol":"json","version":1}\x1e');
@@ -82,7 +83,6 @@ function connect() {
             w.send('{"arguments":["00000000-0000-0000-0000-000000000000"],"invocationId":"0","target":"SubscribeClient","type":1}\x1e');
           }, 1000);
         });
-
         w.on('message', function(d) {
           try {
             var msgs = d.toString().split('\x1e').filter(function(s) { return s.trim(); });
@@ -96,18 +96,18 @@ function connect() {
                   lastProcessedWsRound = wsRound;
                   var first = parseInt(a.ballNumbers[0]);
                   var first5 = a.ballNumbers.slice(0, 5).map(Number);
+                  var allNums = a.ballNumbers.map(Number);
                   var ou = first > 24 ? 'OVER' : 'UNDER';
                   var renk = colors[first] || 'Bilinmiyor';
                   console.log('------------------------------------');
                   console.log('YENI CEKILIS | Round: ' + wsRound);
                   console.log('FIRST: ' + first + ' | ' + ou + ' | ' + renk);
-                  saveDraw(wsRound, first, first5, ou, renk, a.ballNumbers.join(','));
+                  saveDraw(wsRound, first, first5, allNums, ou, renk, a.ballNumbers.join(','));
                 }
               } catch(e2) {}
             });
           } catch(e) { console.log('Mesaj hatasi:', e.message); }
         });
-
         w.on('close', function() { console.log('WS kapandi, 3sn sonra baglaniliyor...'); setTimeout(connect, 3000); });
         w.on('error', function(e) { console.log('WS hatasi:', e.message); });
       } catch(e) { console.log('Negotiate hatasi:', e.message); setTimeout(connect, 5000); }
@@ -115,24 +115,22 @@ function connect() {
   }).on('error', function(e) { console.log('HTTPS hatasi:', e.message); setTimeout(connect, 5000); }).end();
 }
 
-function saveDraw(round, first, first5, ou, renk, allNums) {
+function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
   db.query(
     'INSERT INTO draws (round, first, over_under, color, all_numbers) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (round) DO NOTHING RETURNING id',
-    [round, first, ou, renk, allNums]
+    [round, first, ou, renk, allNumsStr]
   ).then(function(ins) {
     if (ins.rows.length === 0) {
       console.log('Round ' + round + ' zaten var - tahmin guncelleniyor...');
-      updatePredictions(round, first, first5, ou, renk);
-      saveNextPrediction(round);
-      return;
+    } else {
+      console.log('Draw kaydedildi: Round ' + round);
     }
-    console.log('Draw kaydedildi: Round ' + round);
-    updatePredictions(round, first, first5, ou, renk);
+    updatePredictions(round, first, first5, allNums, ou, renk);
     saveNextPrediction(round);
   }).catch(function(e) { console.log('Draw hatasi:', e.message); });
 }
 
-function updatePredictions(round, first, first5, ou, renk) {
+function updatePredictions(round, first, first5, allNums, ou, renk) {
   db.query('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8 FROM predictions WHERE round = $1 AND ou_hit = -1', [round])
   .then(function(res) {
     if (res.rows.length === 0) { console.log('Round ' + round + ' icin bekleyen tahmin yok.'); return; }
@@ -142,16 +140,21 @@ function updatePredictions(round, first, first5, ou, renk) {
       var pf  = row.pred_first    ? row.pred_first.split(',').map(Number)    : [];
       var pf5 = row.pred_first5   ? row.pred_first5.split(',').map(Number)   : [];
       var pc8 = row.pred_certain8 ? row.pred_certain8.split(',').map(Number) : [];
-      var firstHit = pf.indexOf(first)  !== -1 ? 1 : 0;
-      var f5Hit    = pf5.indexOf(first) !== -1 ? 1 : 0;
-      var c8Hit    = pc8.indexOf(first) !== -1 ? 1 : 0;
-      var f5Match  = first5.filter(function(n) { return pf5.indexOf(n) !== -1; }).length;
-      var c8Match  = first5.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
+      var firstHit    = pf.indexOf(first)  !== -1 ? 1 : 0;
+      var f5Hit       = pf5.indexOf(first) !== -1 ? 1 : 0;
+      var c8Hit       = pc8.indexOf(first) !== -1 ? 1 : 0;
+      var f5Match     = first5.filter(function(n) { return pf5.indexOf(n) !== -1; }).length;
+      var c8Match     = first5.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
+      var c8FullMatch = allNums.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
       db.query(
-        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11 WHERE id=$12',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, row.id]
+        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12 WHERE id=$13',
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, row.id]
       ).then(function() {
-        console.log('>>> Tahmin guncellendi Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | Sayi:' + (firstHit?'TUTTU':'KACTI'));
+        console.log('>>> Tahmin guncellendi Round ' + round +
+          ' | OU:' + (ouHit?'TUTTU':'KACTI') +
+          ' | Renk:' + (colorHit?'TUTTU':'KACTI') +
+          ' | Sayi:' + (firstHit?'TUTTU':'KACTI') +
+          ' | F5:' + f5Match + ' | C8:' + c8Match + ' | C8Full:' + c8FullMatch + '/8');
       }).catch(function(e) { console.log('Update hatasi:', e.message); });
     });
   }).catch(function(e) { console.log('UpdatePred hatasi:', e.message); });
@@ -251,14 +254,26 @@ function predict(draws) {
   var mc={}; for(var mci=1;mci<=48;mci++) mc[mci]=0;
   for(var sim=0;sim<500;sim++){var pool=[];for(var pi2=1;pi2<=48;pi2++){var w2=Math.floor(ns[pi2]+1);for(var ji=0;ji<w2;ji++)pool.push(pi2);}if(pool.length>0){mc[pool[Math.floor(Math.random()*pool.length)]]++;}}
   for(var fni=1;fni<=48;fni++){ns[fni]+=mc[fni]*0.1;if(state==='TREND')ns[fni]*=1.1;else if(state==='CHAOS')ns[fni]*=0.9;}
-  var cands=[]; for(var ci2=1;ci2<=48;ci2++) cands.push(ci2);
-  cands.sort(function(a,b){return ns[b]-ns[a];});
-  if(predOU==='OVER') cands=cands.filter(function(x){return x>24;});
-  else cands=cands.filter(function(x){return x<=24;});
-  result.first_candidates=cands.slice(0,5).sort(function(a,b){return a-b;});
-result.first5_candidates=cands.slice(0,6).sort(function(a,b){return a-b;});
-result.certain8=cands.slice(0,8).sort(function(a,b){return a-b;});
+  var allCands=[]; for(var ai=1;ai<=48;ai++) allCands.push(ai);
+  allCands.sort(function(a,b){return ns[b]-ns[a];});
+  var filtCands = allCands.filter(function(x){ return predOU==='OVER' ? x>24 : x<=24; });
+  result.first_candidates  = filtCands.slice(0,5).sort(function(a,b){return a-b;});
+  result.first5_candidates = filtCands.slice(0,6).sort(function(a,b){return a-b;});
+  result.certain8          = allCands.slice(0,8).sort(function(a,b){return a-b;});
   return result;
+}
+
+function colorStyle(renk, hit) {
+  // Siyah icin ozel: koyu arka plan uzerine acik gri yazi
+  if (renk === 'Siyah') {
+    return hit
+      ? 'background:#374151;border:2px solid #22c55e;color:#e5e7eb'
+      : 'background:#374151;border:1px solid #6b7280;color:#e5e7eb';
+  }
+  var hex = COLOR_HEX[renk] || '#aab0c4';
+  return hit
+    ? 'background:#14532d;border:2px solid ' + hex + ';color:' + hex
+    : 'background:#1e2130;border:1px solid ' + hex + '88;color:' + hex;
 }
 
 function startDashboard() {
@@ -281,63 +296,207 @@ function startDashboard() {
     }).catch(function(e){clearTimeout(timer);if(!res.headersSent)res.json({error:e.message});});
   });
 
-  app.get('/report', function(req, res) {
-    db.query('SELECT * FROM predictions WHERE ou_hit != -1 ORDER BY round DESC LIMIT 500').then(function(result) {
-      var rows=result.rows,ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0,f5T=0,f5S=0,c8T=0,c8S=0;
-      rows.forEach(function(r){ouTotal++;if(parseInt(r.ou_hit)===1)ouHit++;colorTotal++;if(parseInt(r.color_hit)===1)colorHit++;firstTotal++;if(parseInt(r.first_hit)===1)firstHit++;var fm=parseInt(r.first5_match);if(fm>=0){f5T++;f5S+=fm;}var cm=parseInt(r.certain8_match);if(cm>=0){c8T++;c8S+=cm;}});
-      res.json({summary:{ou:{hit:ouHit,total:ouTotal,pct:ouTotal>0?Math.round(ouHit/ouTotal*100):0},color:{hit:colorHit,total:colorTotal,pct:colorTotal>0?Math.round(colorHit/colorTotal*100):0},first:{hit:firstHit,total:firstTotal,pct:firstTotal>0?Math.round(firstHit/firstTotal*100):0},f5avg:f5T>0?(f5S/f5T).toFixed(1):0,c8avg:c8T>0?(c8S/c8T).toFixed(1):0},rows:rows});
-    }).catch(function(e){res.json({error:e.message});});
-  });
-
   app.get('/rapor', function(req, res) {
     db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 500').then(function(result) {
-      var rows=result.rows,ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0,f5T=0,f5S=0,c8T=0,c8S=0;
-      rows.forEach(function(r){ouTotal++;if(parseInt(r.ou_hit)===1)ouHit++;colorTotal++;if(parseInt(r.color_hit)===1)colorHit++;firstTotal++;if(parseInt(r.first_hit)===1)firstHit++;var fm=parseInt(r.first5_match);if(fm>=0){f5T++;f5S+=fm;}var cm=parseInt(r.certain8_match);if(cm>=0){c8T++;c8S+=cm;}});
-      var ouPct=ouTotal>0?Math.round(ouHit/ouTotal*100):0;
-      var colorPct=colorTotal>0?Math.round(colorHit/colorTotal*100):0;
-      var firstPct=firstTotal>0?Math.round(firstHit/firstTotal*100):0;
-      var f5avg=f5T>0?(f5S/f5T).toFixed(1):'0';
-      var c8avg=c8T>0?(c8S/c8T).toFixed(1):'0';
+      var rows=result.rows;
+      var ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0;
+      var f5T=0,f5S=0,c8T=0,c8S=0,c8FT=0,c8FS=0;
+      rows.forEach(function(r){
+        ouTotal++;   if(parseInt(r.ou_hit)===1)ouHit++;
+        colorTotal++;if(parseInt(r.color_hit)===1)colorHit++;
+        firstTotal++;if(parseInt(r.first_hit)===1)firstHit++;
+        var fm=parseInt(r.first5_match);   if(fm>=0){f5T++;f5S+=fm;}
+        var cm=parseInt(r.certain8_match); if(cm>=0){c8T++;c8S+=cm;}
+        var cfm=parseInt(r.certain8_full_match); if(cfm>=0){c8FT++;c8FS+=cfm;}
+      });
+      var ouPct    = ouTotal>0    ? Math.round(ouHit/ouTotal*100)       : 0;
+      var colorPct = colorTotal>0 ? Math.round(colorHit/colorTotal*100) : 0;
+      var firstPct = firstTotal>0 ? Math.round(firstHit/firstTotal*100) : 0;
+      var f5avg    = f5T>0  ? (f5S/f5T).toFixed(2)  : '0.00';
+      var c8avg    = c8T>0  ? (c8S/c8T).toFixed(2)  : '0.00';
+      var c8favg   = c8FT>0 ? (c8FS/c8FT).toFixed(2): '0.00';
+
       var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapor</title>';
-      h+='<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1d2e;color:#fff;font-family:Arial,sans-serif;padding:12px;max-width:520px;margin:0 auto}';
+      h+='<style>';
+      h+='*{margin:0;padding:0;box-sizing:border-box}';
+      h+='body{background:#1a1d2e;color:#fff;font-family:Arial,sans-serif;padding:12px;max-width:580px;margin:0 auto}';
       h+='h1{font-size:20px;text-align:center;font-weight:900;letter-spacing:3px;padding:16px 0}';
       h+='.btn{display:block;width:100%;padding:13px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:12px;text-align:center;text-decoration:none}';
       h+='.st{font-size:10px;color:#5a6180;text-transform:uppercase;letter-spacing:2px;font-weight:700;padding:10px 0 8px;border-bottom:1px solid #2a2f42;margin-bottom:12px}';
-      h+='.sr{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1e2130}';
-      h+='.sl{font-size:14px;color:#aab0c4;font-weight:600}.srr{text-align:right}';
-      h+='.sp{font-size:22px;font-weight:900}.ss{font-size:11px;color:#5a6180;margin-top:2px}';
-      h+='.bar{height:4px;background:#2a2f42;border-radius:2px;margin-top:6px;width:120px;overflow:hidden}.bf{height:100%;border-radius:2px}';
-      h+='.ar{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1e2130}';
-      h+='.rc{background:#262a3a;border:1px solid #2a2f42;border-radius:12px;padding:12px;margin-bottom:8px}';
-      h+='.rh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}';
-      h+='.rn{font-size:12px;color:#5a6180;font-weight:600}.rr{font-size:13px;font-weight:800}';
-      h+='.nr{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0}';
-      h+='.nb{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}';
-      h+='.mi{font-size:11px;color:#5a6180;margin-top:6px}.hit{color:#22c55e}.miss{color:#ef4444}';
+      h+='.sr{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1e2130}';
+      h+='.sl{font-size:13px;color:#aab0c4;font-weight:600}';
+      h+='.srr{text-align:right}';
+      h+='.sp{font-size:20px;font-weight:900}';
+      h+='.ss{font-size:11px;color:#5a6180;margin-top:2px}';
+      h+='.bar{height:4px;background:#2a2f42;border-radius:2px;margin-top:5px;width:100px;overflow:hidden}';
+      h+='.bf{height:100%;border-radius:2px}';
+      h+='.ar{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1e2130}';
+      h+='.rc{background:#262a3a;border:1px solid #2a2f42;border-radius:12px;padding:12px;margin-bottom:10px}';
+      h+='.rh{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:4px}';
+      h+='.rn{font-size:12px;color:#5a6180;font-weight:700}';
+      h+='.lbl{font-size:10px;color:#5a6180;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px}';
+      h+='.nr{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;align-items:center}';
+      h+='.nb{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0}';
+      h+='.mi{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #2a2f42}';
+      h+='.mc{background:#1e2130;padding:5px 10px;border-radius:8px;font-size:11px}';
+      h+='.hit{color:#22c55e}.miss{color:#ef4444}';
+      h+='.renk-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:800}';
       h+='</style></head><body>';
-      h+='<h1>TAHMIN RAPORU</h1><a class="btn" href="/">ANA SAYFA</a>';
+
+      h+='<h1>TAHMIN RAPORU</h1>';
+      h+='<a class="btn" href="/">ANA SAYFA</a>';
       h+='<div class="st">Basari Ozeti (Son '+ouTotal+' Tahmin)</div>';
+
       var ouc=ouPct>=55?'#22c55e':ouPct>=50?'#facc15':'#ef4444';
-      h+='<div class="sr"><div class="sl">Over/Under</div><div class="srr"><div class="sp" style="color:'+ouc+'">%'+ouPct+'</div><div class="ss">'+ouHit+'/'+ouTotal+' tuttu</div><div class="bar"><div class="bf" style="width:'+ouPct+'%;background:'+ouc+'"></div></div></div></div>';
+      h+='<div class="sr"><div class="sl">Over/Under</div><div class="srr">';
+      h+='<div class="sp" style="color:'+ouc+'">%'+ouPct+'</div>';
+      h+='<div class="ss">'+ouHit+'/'+ouTotal+' tuttu</div>';
+      h+='<div class="bar"><div class="bf" style="width:'+ouPct+'%;background:'+ouc+'"></div></div>';
+      h+='</div></div>';
+
       var cc=colorPct>=20?'#22c55e':colorPct>=12?'#facc15':'#ef4444';
-      h+='<div class="sr"><div class="sl">Renk</div><div class="srr"><div class="sp" style="color:'+cc+'">%'+colorPct+'</div><div class="ss">'+colorHit+'/'+colorTotal+' tuttu</div><div class="bar"><div class="bf" style="width:'+Math.min(colorPct*4,100)+'%;background:'+cc+'"></div></div></div></div>';
+      h+='<div class="sr"><div class="sl">Renk</div><div class="srr">';
+      h+='<div class="sp" style="color:'+cc+'">%'+colorPct+'</div>';
+      h+='<div class="ss">'+colorHit+'/'+colorTotal+' tuttu</div>';
+      h+='<div class="bar"><div class="bf" style="width:'+Math.min(colorPct*4,100)+'%;background:'+cc+'"></div></div>';
+      h+='</div></div>';
+
       var fc=firstPct>=15?'#22c55e':firstPct>=10?'#facc15':'#ef4444';
-      h+='<div class="sr"><div class="sl">Ilk Sayi (5 Aday)</div><div class="srr"><div class="sp" style="color:'+fc+'">%'+firstPct+'</div><div class="ss">'+firstHit+'/'+firstTotal+' tuttu</div><div class="bar"><div class="bf" style="width:'+Math.min(firstPct*4,100)+'%;background:'+fc+'"></div></div></div></div>';
-      h+='<div class="ar"><div class="sl">Ilk 5 Adayi Ort.</div><div style="font-size:18px;font-weight:900;color:#3b82f6">'+f5avg+'/5</div></div>';
-      h+='<div class="ar"><div class="sl">Kesin 8 Ort.</div><div style="font-size:18px;font-weight:900;color:#3b82f6">'+c8avg+'/5</div></div>';
+      h+='<div class="sr"><div class="sl">Ilk Sayi (5 Aday)</div><div class="srr">';
+      h+='<div class="sp" style="color:'+fc+'">%'+firstPct+'</div>';
+      h+='<div class="ss">'+firstHit+'/'+firstTotal+' tuttu</div>';
+      h+='<div class="bar"><div class="bf" style="width:'+Math.min(firstPct*4,100)+'%;background:'+fc+'"></div></div>';
+      h+='</div></div>';
+
+      h+='<div class="ar"><div class="sl">6 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
+      h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+f5avg+' / 5</div></div>';
+      h+='<div class="ar"><div class="sl">8 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
+      h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+c8avg+' / 5</div></div>';
+      h+='<div class="ar"><div class="sl">8 Aday \u2192 Full cekilis (35 sayi)\'de kac tuttu (ort.)</div>';
+      h+='<div style="font-size:16px;font-weight:900;color:#a855f7">'+c8favg+' / 8</div></div>';
+
       h+='<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
+
       rows.forEach(function(r){
-        var ouHitR=parseInt(r.ou_hit)===1;
-        var af5=r.actual_first5?r.actual_first5.split(',').map(Number):[];
-        var pf6=r.pred_first5?r.pred_first5.split(',').map(Number):[];
-        var f5m=parseInt(r.first5_match)>=0?parseInt(r.first5_match):'-';
-        var c8m=parseInt(r.certain8_match)>=0?parseInt(r.certain8_match):'-';
-        h+='<div class="rc"><div class="rh"><span class="rn">Round '+r.round+'</span>';
-        h+='<span class="rr">1.S: <span style="font-size:16px">'+(r.actual_first||'?')+'</span> '+(r.actual_color||'?')+' <span class="'+(ouHitR?'hit':'miss')+'">'+(r.actual_ou||'?')+(ouHitR?' \u2713':' \u2717')+'</span></span></div>';
-        if(af5.length>0){h+='<div style="font-size:10px;color:#5a6180;margin-bottom:4px">GERCEK ILK5:</div><div class="nr">';af5.forEach(function(n){h+='<div class="nb" style="background:#1e3a5f">'+n+'</div>';});h+='</div>';}
-        if(pf6.length>0){h+='<div style="font-size:10px;color:#5a6180;margin-top:6px;margin-bottom:4px">TAHMIN 6:</div><div class="nr">';pf6.forEach(function(n){var ia=af5.indexOf(n)!==-1;h+='<div class="nb" style="background:'+(ia?'#14532d':'#2a3040')+';border:1px solid '+(ia?'#22c55e':'#4a5270')+'">'+n+'</div>';});h+='</div>';}
-        h+='<div class="mi">5\'te '+f5m+'/6 tuttu | 8\'de '+c8m+'/8 tuttu</div></div>';
+        var ouHitR    = parseInt(r.ou_hit)===1;
+        var colorHitR = parseInt(r.color_hit)===1;
+        var firstHitR = parseInt(r.first_hit)===1;
+
+        var af5  = r.actual_first5 ? r.actual_first5.split(',').map(Number) : [];
+        var aAll = r.actual_all    ? r.actual_all.split(',').map(Number)    : [];
+
+        var pf1 = r.pred_first    ? r.pred_first.split(',').map(Number).sort(function(a,b){return a-b;})    : [];
+        var pf5 = r.pred_first5   ? r.pred_first5.split(',').map(Number).sort(function(a,b){return a-b;})   : [];
+        var pc8 = r.pred_certain8 ? r.pred_certain8.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
+
+        var f5m  = parseInt(r.first5_match)        >= 0 ? parseInt(r.first5_match)        : '-';
+        var c8m  = parseInt(r.certain8_match)      >= 0 ? parseInt(r.certain8_match)      : '-';
+        var c8fm = parseInt(r.certain8_full_match)  >= 0 ? parseInt(r.certain8_full_match)  : '-';
+
+        // Renk badge fonksiyonu
+        function renkBadge(renk, hit) {
+          if (!renk) return '?';
+          var hex = COLOR_HEX[renk] || '#aab0c4';
+          var textColor = renk === 'Siyah' ? '#e5e7eb' : hex;
+          var bg = hit ? (renk === 'Siyah' ? '#374151' : '#1a1a2e') : '#1e2130';
+          var border = hit ? (renk === 'Siyah' ? '2px solid #22c55e' : '2px solid '+hex) : '1px solid '+hex+'66';
+          return '<span class="renk-badge" style="color:'+textColor+';background:'+bg+';border:'+border+'">'+renk+'</span>';
+        }
+
+        h+='<div class="rc">';
+
+        // Baslik satiri
+        h+='<div class="rh">';
+        h+='<span class="rn">Round '+r.round+'</span>';
+        h+='<span style="font-size:13px;font-weight:800">';
+        h+='1.S: <span style="font-size:15px;font-weight:900">'+(r.actual_first||'?')+'</span> ';
+        h+=renkBadge(r.actual_color, colorHitR)+' ';
+        h+='<span class="'+(ouHitR?'hit':'miss')+'">'+(r.actual_ou||'?')+(ouHitR?' \u2713':' \u2717')+'</span>';
+        h+='</span>';
+        h+='</div>';
+
+        // Renk tahmini satiri
+        if(r.pred_color){
+          var predRenkHex = COLOR_HEX[r.pred_color] || '#aab0c4';
+          var predRenkText = r.pred_color === 'Siyah' ? '#e5e7eb' : predRenkHex;
+          h+='<div class="lbl">RENK TAHMIN\u0130</div>';
+          h+='<div style="margin-bottom:6px">';
+          h+='<span class="renk-badge" style="color:'+predRenkText+';background:#1e2130;border:1px solid '+predRenkHex+'88">';
+          h+=r.pred_color;
+          h+='</span>';
+          if(colorHitR){
+            h+=' <span style="color:#22c55e;font-size:12px;font-weight:800">\u2713 TUTTU</span>';
+          } else {
+            h+=' <span style="color:#ef4444;font-size:12px;font-weight:800">\u2717 KACTI</span>';
+            h+=' <span style="font-size:11px;color:#5a6180">(Gercek: '+renkBadge(r.actual_color, false)+')</span>';
+          }
+          h+='</div>';
+        }
+
+        // TAHMIN 5 - ilk sayi adaylari
+        if(pf1.length>0){
+          h+='<div class="lbl">TAHMIN 5 \u2014 1. Sayi Adaylari</div>';
+          h+='<div class="nr">';
+          pf1.forEach(function(n){
+            var isFirst = n===parseInt(r.actual_first);
+            h+='<div class="nb" style="background:'+(isFirst?'#14532d':'#1e2130')+';border:'+(isFirst?'2px solid #22c55e':'1px solid #3b82f6')+';color:'+(isFirst?'#22c55e':'#93c5fd')+'">'+n+'</div>';
+          });
+          h+='<span style="font-size:11px;color:'+(firstHitR?'#22c55e':'#ef4444')+';margin-left:6px;font-weight:800">'+(firstHitR?'\u2713 TUTTU':'\u2717 KACTI')+'</span>';
+          h+='</div>';
+        }
+
+        // GERCEK ILK 5
+        if(af5.length>0){
+          h+='<div class="lbl">GERCEK ILK 5</div>';
+          h+='<div class="nr">';
+          af5.forEach(function(n){
+            h+='<div class="nb" style="background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd">'+n+'</div>';
+          });
+          h+='</div>';
+        }
+
+        // TAHMIN 6
+        if(pf5.length>0){
+          h+='<div class="lbl">TAHMIN 6 \u2014 Ilk 5\'te Cikacak</div>';
+          h+='<div class="nr">';
+          pf5.forEach(function(n){
+            var inIlk5 = af5.indexOf(n)!==-1;
+            h+='<div class="nb" style="background:'+(inIlk5?'#14532d':'#2a3040')+';border:1px solid '+(inIlk5?'#22c55e':'#4a5270')+';color:'+(inIlk5?'#22c55e':'#aab0c4')+'">'+n+'</div>';
+          });
+          h+='<span style="font-size:11px;color:'+(f5m>0?'#22c55e':'#aab0c4')+';margin-left:6px;font-weight:800">'+f5m+'/5 tuttu</span>';
+          h+='</div>';
+        }
+
+        // TAHMIN 8
+        if(pc8.length>0){
+          h+='<div class="lbl">TAHMIN 8 \u2014 Kesin Cikacak &nbsp;<span style="color:#a855f7;font-weight:900">'+c8fm+'/8 tuttu (35 sayida)</span></div>';
+          h+='<div class="nr">';
+          pc8.forEach(function(n){
+            var inIlk5 = af5.indexOf(n)!==-1;
+            var inFull = aAll.indexOf(n)!==-1;
+            var bg  = inIlk5 ? '#14532d' : inFull ? '#1a3a2a' : '#2a3040';
+            var brd = inIlk5 ? '#22c55e' : inFull ? '#16a34a' : '#4a5270';
+            var cl  = inIlk5 ? '#22c55e' : inFull ? '#4ade80' : '#aab0c4';
+            h+='<div class="nb" style="background:'+bg+';border:1px solid '+brd+';color:'+cl+'">'+n+'</div>';
+          });
+          h+='</div>';
+          h+='<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
+          h+='<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#14532d;border:1px solid #22c55e;vertical-align:middle"></span> Ilk5\'te cikti</span>';
+          h+='<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1a3a2a;border:1px solid #16a34a;vertical-align:middle"></span> 35 sayida cikti</span>';
+          h+='<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
+          h+='</div>';
+        }
+
+        // Ozet
+        h+='<div class="mi">';
+        h+='<div class="mc">6 aday \u2192 ilk5: <strong style="color:'+(f5m>0?'#22c55e':'#aab0c4')+'">'+f5m+'/5</strong></div>';
+        h+='<div class="mc">8 aday \u2192 ilk5: <strong style="color:'+(c8m>0?'#22c55e':'#aab0c4')+'">'+c8m+'/5</strong></div>';
+        h+='<div class="mc">8 aday \u2192 35 sayi: <strong style="color:'+(c8fm>=4?'#22c55e':c8fm>=2?'#facc15':'#aab0c4')+'">'+c8fm+'/8</strong></div>';
+        h+='</div>';
+
+        h+='</div>';
       });
+
       h+='</body></html>';
       res.type('html'); res.end(h);
     }).catch(function(e){res.status(500).send('Rapor hatasi: '+e.message);});
@@ -381,8 +540,7 @@ function startDashboard() {
     h+='var sc=ou.streak.count>=7?"#ef4444":ou.streak.count>=5?"#f97316":ou.streak.count>=3?"#facc15":"#aab0c4";';
     h+='var sbg=ou.streak.count>=7?"rgba(239,68,68,0.15)":ou.streak.count>=5?"rgba(249,115,22,0.15)":ou.streak.count>=3?"rgba(250,204,21,0.1)":"rgba(255,255,255,0.05)";';
     h+='h+="<div class=\'si\' style=\'background:"+sbg+";color:"+sc+";border:1px solid "+sc+"44\'>Mevcut Seri: "+ou.streak.type+" "+ou.streak.count+"x</div>";';
-    h+='}';
-    h+='h+="</div>";}';
+    h+='}h+="</div>";}';
     h+='else{h+="<div class=\'card\'><div class=\'title\'>Tahmin</div><div style=\'color:#facc15;padding:10px\'>Tahmin hesaplaniyor, bekleyin...</div></div>";}';
     h+='if(pr&&pr.color){var cl=pr.color;var pc=CH[cl.pred]||"#fff";';
     h+='h+="<div class=\'card\' style=\'border-color:"+pc+"66\'>";';
@@ -394,8 +552,7 @@ function startDashboard() {
     h+='var cnt=(cl.counts&&cl.counts[cn])||0;var bg=CH[cn]||"#333";';
     h+='var op=cnt<=(100/8)*0.5?1:cnt<=(100/8)*0.8?0.65:0.3;';
     h+='h+="<span class=\'cb\' style=\'background:"+bg+";opacity:"+op+"\'>"+cn+" "+cnt+"</span>";';
-    h+='});';
-    h+='h+="</div></div></div>";}';
+    h+='});h+="</div></div></div>";}';
     h+='if(pr&&pr.first_candidates&&pr.first_candidates.length>0){';
     h+='h+="<div class=\'card\'><div class=\'title\'>Ilk Sayi - 5 Aday</div><div class=\'nums\'>";';
     h+='pr.first_candidates.forEach(function(n){h+="<div class=\'num\' style=\'background:#1e3a5f;border:2px solid #3b82f6\'>"+n+"</div>";});';
@@ -406,7 +563,7 @@ function startDashboard() {
     h+='h+="</div></div>";}';
     h+='if(pr&&pr.certain8&&pr.certain8.length>0){';
     h+='h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 8 Sayi</div><div class=\'nums\'>";';
-    h+='pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #4a5270\'>"+n+"</div>";});';
+    h+='pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
     h+='h+="</div></div>";}';
     h+='if(d.stats){';
     h+='h+="<div class=\'card\'><div class=\'title\'>Istatistik ("+d.stats.total+" Round)</div>";';
@@ -416,10 +573,8 @@ function startDashboard() {
     h+='h+="<div class=\'card\'><div class=\'title\'>Son 200 Cekilis</div>";';
     h+='h+="<div class=\'hdr\'><span>Round</span><span>1.S</span><span>Renk</span><span>O/U</span><span>Seri</span></div>";';
     h+='for(var i=0;i<d.last200.length;i++){';
-    h+='var r=d.last200[i];';
-    h+='var oc2=r.over_under==="OVER"?"#22c55e":"#ef4444";';
-    h+='var rc=CH[r.color]||"#aaa";';
-    h+='var streak=1;';
+    h+='var r=d.last200[i];var oc2=r.over_under==="OVER"?"#22c55e":"#ef4444";';
+    h+='var rc=CH[r.color]||"#aaa";var streak=1;';
     h+='for(var j=i+1;j<d.last200.length;j++){if(d.last200[j].over_under===r.over_under)streak++;else break;}';
     h+='var sc2=streak>=7?"#ef4444":streak>=5?"#f97316":streak>=3?"#facc15":"#5a6180";';
     h+='h+="<div class=\'row\'>";';
@@ -428,8 +583,7 @@ function startDashboard() {
     h+='h+="<span style=\'color:"+rc+";font-weight:700\'>"+r.color+"</span>";';
     h+='h+="<span style=\'color:"+oc2+";font-weight:900\'>"+r.over_under+"</span>";';
     h+='h+="<span style=\'color:"+sc2+";font-weight:800;font-size:11px\'>"+streak+"x</span>";';
-    h+='h+="</div>";}';
-    h+='h+="</div>";}';
+    h+='h+="</div>";}h+="</div>";}';
     h+='h+="<div class=\'ref\'>Her 30 saniyede bir guncellenir</div>";';
     h+='document.getElementById("app").innerHTML=h;';
     h+='}catch(e){document.getElementById("app").innerHTML="<div style=\'color:#ef4444;padding:20px\'>Hata: "+e.message+"</div>";}};';
