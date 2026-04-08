@@ -47,8 +47,11 @@ function loadCacheFromDB() {
         if (pred && pred.over_under) {
           globalPredCache = pred;
           console.log('Cache yuklendi - OU: ' + pred.over_under.pred + ' Renk: ' + (pred.color ? pred.color.pred : '?'));
+          return;
         }
       } catch(e) { console.log('Cache predict hatasi:', e.message); }
+    } else {
+      console.log('Yeterli draw yok, cache bos kalacak.');
     }
   }).catch(function(e) { console.log('loadCacheFromDB hatasi:', e.message); });
 }
@@ -179,12 +182,13 @@ function saveNextPrediction(round) {
   }).catch(function(e) { console.log('SaveNextPred hatasi:', e.message); });
 }
 
-function calcStreak(ouList) {
-  if (!ouList || ouList.length === 0) return { type: 'OVER', count: 1 };
-  var last = ouList[0];
+function calcStreak(firstNums) {
+  if (!firstNums || firstNums.length === 0) return { type: 'OVER', count: 1 };
+  var last = firstNums[0] > 24 ? 'OVER' : 'UNDER';
   var count = 1;
-  for (var i = 1; i < ouList.length; i++) {
-    if (ouList[i] === last) count++; else break;
+  for (var si = 1; si < firstNums.length; si++) {
+    var cur = firstNums[si] > 24 ? 'OVER' : 'UNDER';
+    if (cur === last) count++; else break;
   }
   return { type: last, count: count };
 }
@@ -196,187 +200,71 @@ function predict(draws) {
   var firstNums = draws.map(function(d) { return parseInt(d.first); });
   var colorList = draws.map(function(d) { return d.color; });
   var ouList    = draws.map(function(d) { return d.over_under; });
-  var allNumsArr = draws.map(function(d) { return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
-
-  // ── OVER/UNDER: SERİ BAZLI ──────────────────────────────
-  var streak = calcStreak(ouList);
-  var predOU, ouConf, streakNote = '', state = 'BALANCED';
-
-  if (streak.count >= 7) {
-    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
-    ouConf = 87;
-    streakNote = streak.type + ' ' + streak.count + 'x — KESIN DONIYOR';
-    state = 'REVERSAL';
-  } else if (streak.count >= 5) {
-    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
-    ouConf = 79;
-    streakNote = streak.type + ' ' + streak.count + 'x — karsi tarafa gec';
-    state = 'REVERSAL';
-  } else if (streak.count === 4) {
-    predOU = streak.type === 'OVER' ? 'UNDER' : 'OVER';
-    ouConf = 67;
-    streakNote = streak.type + ' 4x — donus yaklasıyor';
-    state = 'WARNING';
-  } else if (streak.count === 3) {
-    // 3x — son 50 çekilişin dengesine bak
-    var ov50 = ouList.slice(0, Math.min(50, n)).filter(function(x){return x==='OVER';}).length;
-    var pct50 = ov50 / Math.min(50, n);
-    if (pct50 > 0.58) { predOU = 'UNDER'; ouConf = 60; }
-    else if (pct50 < 0.42) { predOU = 'OVER'; ouConf = 60; }
-    else { predOU = streak.type; ouConf = 56; }
-    streakNote = streak.type + ' 3x';
-    state = 'CAUTION';
-  } else if (streak.count === 2) {
-    var ov30 = ouList.slice(0, Math.min(30, n)).filter(function(x){return x==='OVER';}).length;
-    var pct30 = ov30 / Math.min(30, n);
-    predOU = pct30 > 0.55 ? 'UNDER' : pct30 < 0.45 ? 'OVER' : streak.type;
-    ouConf = 54;
-    streakNote = streak.type + ' 2x';
-    state = 'BALANCED';
-  } else {
-    // 1x — sadece genel denge
-    var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x){return x==='OVER';}).length;
-    var pct20 = ov20 / Math.min(20, n);
-    predOU = pct20 > 0.60 ? 'UNDER' : pct20 < 0.40 ? 'OVER' : (streak.type === 'OVER' ? 'UNDER' : 'OVER');
-    ouConf = 52;
-    state = 'BALANCED';
+  var streak = calcStreak(firstNums);
+  var markovOU = {};
+  for (var mi = 0; mi < n - 2; mi++) {
+    var key = ouList[mi+1] + '|' + ouList[mi];
+    if (!markovOU[key]) markovOU[key] = { OVER: 0, UNDER: 0 };
+    markovOU[key][ouList[mi+2]]++;
   }
-  result.over_under = { pred: predOU, conf: ouConf, streak: streak, state: state };
-
-  // ── RENK: AÇIK GELİŞMİŞ SKOR ────────────────────────────
-  var colorCounts = {};
-  ALL_COLORS.forEach(function(c){ colorCounts[c] = 0; });
-  colorList.slice(0, Math.min(100, n)).forEach(function(c){ if(colorCounts[c] !== undefined) colorCounts[c]++; });
-
-  var colorCounts30 = {};
-  ALL_COLORS.forEach(function(c){ colorCounts30[c] = 0; });
-  colorList.slice(0, Math.min(30, n)).forEach(function(c){ if(colorCounts30[c] !== undefined) colorCounts30[c]++; });
-
-  var colorLastSeen = {};
-  ALL_COLORS.forEach(function(c){ colorLastSeen[c] = 999; });
-  colorList.forEach(function(c, ci){ if(colorLastSeen[c] === 999) colorLastSeen[c] = ci; });
-
-  // Son 30'da 0 gelen = soğuk = yüksek öncelik
-  var coldColors = ALL_COLORS.filter(function(c){ return colorCounts30[c] === 0; });
-
-  var expected100 = 100 / 8; // ~12.5
-  var expected30  = 30  / 8; // ~3.75
+  var lastTwo = ouList.slice(0,2).join('|');
+  var markovProbs = { OVER: 0.5, UNDER: 0.5 };
+  if (markovOU[lastTwo]) {
+    var mTotal = markovOU[lastTwo].OVER + markovOU[lastTwo].UNDER;
+    if (mTotal > 0) { markovProbs.OVER = markovOU[lastTwo].OVER/mTotal; markovProbs.UNDER = markovOU[lastTwo].UNDER/mTotal; }
+  }
+  var directionChanges = 0;
+  for (var di = 1; di < Math.min(n,20); di++) { if (ouList[di] !== ouList[di-1]) directionChanges++; }
+  var changeRate = directionChanges / Math.min(n,20);
+  var state = changeRate > 0.6 ? 'CHAOS' : changeRate < 0.4 ? 'TREND' : 'BALANCED';
+  var stateWeight = state==='TREND' ? 0.7 : state==='CHAOS' ? 0.3 : 0.5;
+  var ouStats = { OVER: 0, UNDER: 0 };
+  for (var oi = 0; oi < Math.min(n,50); oi++) { ouStats[ouList[oi]] += Math.exp(-0.1*oi); }
+  var tw = ouStats.OVER + ouStats.UNDER;
+  var ror = tw > 0 ? ouStats.OVER/tw : 0.5;
+  var ouFP = { OVER: stateWeight*markovProbs.OVER+(1-stateWeight)*ror, UNDER: stateWeight*markovProbs.UNDER+(1-stateWeight)*(1-ror) };
+  var predOU = ouFP.OVER > ouFP.UNDER ? 'OVER' : 'UNDER';
+  result.over_under = { pred: predOU, conf: Math.round(Math.max(ouFP.OVER,ouFP.UNDER)*100), streak: streak, state: state };
+  var colorCounts = {}; ALL_COLORS.forEach(function(c){colorCounts[c]=0;});
+  colorList.slice(0,100).forEach(function(c){if(colorCounts[c]!==undefined)colorCounts[c]++;});
+  var colorLastSeen = {}; ALL_COLORS.forEach(function(c){colorLastSeen[c]=1000;});
+  colorList.forEach(function(c,ci){if(colorLastSeen[c]===1000)colorLastSeen[c]=ci;});
+  var colorMarkov = {};
+  for (var cmi=0;cmi<n-1;cmi++){var c2=colorList[cmi];var nx=colorList[cmi+1];if(!colorMarkov[c2])colorMarkov[c2]={};if(!colorMarkov[c2][nx])colorMarkov[c2][nx]=0;colorMarkov[c2][nx]++;}
+  var lc = colorList[0]; var ncp = {};
+  ALL_COLORS.forEach(function(c){if(colorMarkov[lc]){var tot=Object.keys(colorMarkov[lc]).reduce(function(a,k){return a+colorMarkov[lc][k];},0);ncp[c]=tot>0?(colorMarkov[lc][c]||0)/tot:0;}else{ncp[c]=0;}});
   var cs = {};
-  ALL_COLORS.forEach(function(c) {
-    var deficit100 = Math.max(0, expected100 - colorCounts[c]);   // son 100'de ne kadar az geldi
-    var deficit30  = Math.max(0, expected30  - colorCounts30[c]); // son 30'da ne kadar az geldi
-    var lastSeenScore = Math.min(colorLastSeen[c], 50);           // ne zamandır gelmiyor
-    cs[c] = deficit100 * 2.5 + deficit30 * 5 + lastSeenScore * 1.5;
-  });
-
-  var predColor;
-  if (coldColors.length > 0) {
-    // Soğuk renkler arasında en uzun süredir gelmeyeni seç
-    predColor = coldColors.slice().sort(function(a,b){ return colorLastSeen[b] - colorLastSeen[a]; })[0];
-  } else {
-    predColor = ALL_COLORS.slice().sort(function(a,b){ return cs[b] - cs[a]; })[0];
-  }
-  var colorConf = coldColors.length >= 3 ? 68 : coldColors.length === 2 ? 55 : 40;
-  result.color = { pred: predColor, conf: colorConf, counts: colorCounts, state: state };
-
-  // ── SAYI SKORLARI ────────────────────────────────────────
-
-  // 1. Son görülme (en güçlü sinyal)
-  var numLastSeen = {};
-  for(var i=1; i<=48; i++) numLastSeen[i] = 999;
-  firstNums.forEach(function(num, idx){ if(numLastSeen[num] === 999) numLastSeen[num] = idx; });
-
-  // 2. Frekans decay (son çekilişler daha ağırlıklı)
-  var freqDecay = {};
-  for(var i=1; i<=48; i++) freqDecay[i] = 0;
-  firstNums.forEach(function(num, idx){ freqDecay[num] += Math.exp(-0.04 * idx); });
-  var maxFreq = Math.max.apply(null, Object.keys(freqDecay).map(function(k){return freqDecay[k];})) || 1;
-
-  // 3. Son 20'de gelmeyen sayılar (soğuk)
-  var recent20 = firstNums.slice(0, Math.min(20, n));
-  var coldNums = [];
-  for(var i=1; i<=48; i++){ if(recent20.indexOf(i) === -1) coldNums.push(i); }
-
-  // 4. Zaman bazlı
-  var hour = new Date().getUTCHours() + 3; if(hour >= 24) hour -= 24;
-  var tf = {};
-  for(var i=1; i<=48; i++) tf[i] = 0;
-  draws.forEach(function(d){
-    if(!d.created_at) return;
-    var h = new Date(d.created_at).getUTCHours() + 3; if(h >= 24) h -= 24;
-    if(Math.abs(h - hour) <= 2) tf[parseInt(d.first)] = (tf[parseInt(d.first)]||0) + 1;
-  });
-
-  // 5. Pair analizi (son sayıdan sonra ne geliyor)
+  ALL_COLORS.forEach(function(c){cs[c]=(100-colorCounts[c])*0.5+(100-Math.min(colorLastSeen[c],100))*0.3+(ncp[c]||0)*100*0.2;if(state==='TREND')cs[c]*=1.2;else if(state==='CHAOS')cs[c]*=0.8;});
+  var predColor = ALL_COLORS.reduce(function(a,b){return cs[a]>cs[b]?a:b;});
+  result.color = { pred: predColor, conf: Math.round(Math.min(Math.max(cs[predColor]/2,40),85)), counts: colorCounts, state: state };
+  var ns = {}; for(var ni=1;ni<=48;ni++) ns[ni]=0;
+  var freq = {}; for(var fi=1;fi<=48;fi++) freq[fi]=0;
+  firstNums.forEach(function(num,idx){freq[num]+=Math.exp(-0.05*idx);});
+  var ls = {}; for(var li=1;li<=48;li++) ls[li]=1000;
+  firstNums.forEach(function(num,idx){if(ls[num]===1000)ls[num]=idx;});
+  for(var sci=1;sci<=48;sci++){ns[sci]+=(100-Math.min(ls[sci],100))*0.4+(50-freq[sci])*0.3;}
   var pairs = {};
-  for(var pi = 0; pi < n-1; pi++){
-    var pa = firstNums[pi]; var pb = firstNums[pi+1];
-    var pk = Math.min(pa,pb) + '-' + Math.max(pa,pb);
-    pairs[pk] = (pairs[pk]||0) + 1;
-  }
-  var lastN = firstNums[0];
-
-  // 6. İlk 5 pozisyon frekansı (kesin 8 için)
-  var pos5freq = {};
-  for(var i=1; i<=48; i++) pos5freq[i] = 0;
-  allNumsArr.forEach(function(balls){
-    balls.slice(0,5).forEach(function(num){ pos5freq[num]++; });
-  });
-  var maxPos5 = Math.max.apply(null, Object.keys(pos5freq).map(function(k){return pos5freq[k];})) || 1;
-
-  // 7. Full çekiliş (35 sayı) frekansı
-  var fullFreq = {};
-  for(var i=1; i<=48; i++) fullFreq[i] = 0;
-  allNumsArr.forEach(function(balls, di){
-    balls.forEach(function(num){ fullFreq[num] += Math.exp(-0.02*di); });
-  });
-  var maxFull = Math.max.apply(null, Object.keys(fullFreq).map(function(k){return fullFreq[k];})) || 1;
-
-  // KOMBİNE SKOR — İlk sayı için
-  var ns = {};
-  for(var i=1; i<=48; i++){
-    var lsNorm  = Math.min(numLastSeen[i], 50) / 50 * 100;
-    var frNorm  = (1 - freqDecay[i] / maxFreq) * 100;
-    var cold20  = coldNums.indexOf(i) !== -1 ? 30 : 0;
-    var pairScore = 0;
-    var pk3 = Math.min(lastN, i) + '-' + Math.max(lastN, i);
-    if(pairs[pk3]) pairScore = pairs[pk3] * 3;
-    var timeScore = (tf[i]||0) * 4;
-
-    ns[i] = lsNorm * 0.35 + frNorm * 0.20 + cold20 * 0.25 + pairScore * 0.12 + timeScore * 0.08;
-  }
-
-  // Over/Under filtreyle ilk sayı
-  var allCands = [];
-  for(var i=1; i<=48; i++) allCands.push(i);
-  allCands.sort(function(a,b){ return ns[b] - ns[a]; });
-
-  var filtCands = allCands.filter(function(x){ return predOU === 'OVER' ? x > 24 : x <= 24; });
-  if(filtCands.length < 5) filtCands = allCands; // fallback
-  result.first_candidates  = filtCands.slice(0, 5).sort(function(a,b){ return a-b; });
-  result.first5_candidates = filtCands.slice(0, 6).sort(function(a,b){ return a-b; });
-
-  // Kesin 8 — full çekiliş baz alınır, hem frekans hem soğukluk
-  var ks = {};
-  for(var i=1; i<=48; i++){
-    var fullNorm = fullFreq[i] / maxFull * 100;
-    var pos5Norm = pos5freq[i] / maxPos5 * 100;
-    var lsNorm2  = Math.min(numLastSeen[i], 50) / 50 * 100;
-    var cold5    = 0;
-    var recent5all = [];
-    allNumsArr.slice(0,5).forEach(function(b){ b.forEach(function(x){ recent5all.push(x); }); });
-    if(recent5all.indexOf(i) === -1) cold5 = 25;
-    ks[i] = fullNorm * 0.40 + pos5Norm * 0.25 + lsNorm2 * 0.20 + cold5 * 0.15;
-  }
-  var ksCands = [];
-  for(var i=1; i<=48; i++) ksCands.push(i);
-  ksCands.sort(function(a,b){ return ks[b] - ks[a]; });
-  result.certain8 = ksCands.slice(0, 8).sort(function(a,b){ return a-b; });
-
+  for(var pi=0;pi<n-1;pi++){var pa=firstNums[pi];var pb=firstNums[pi+1];var pk=Math.min(pa,pb)+'-'+Math.max(pa,pb);pairs[pk]=(pairs[pk]||0)+1;}
+  var ln=firstNums[0];
+  for(var pni=1;pni<=48;pni++){var pk2=Math.min(ln,pni)+'-'+Math.max(ln,pni);ns[pni]+=(pairs[pk2]||0)*0.2;}
+  var hour=new Date().getUTCHours()+3; if(hour>=24)hour-=24;
+  var tf={}; for(var ti=1;ti<=48;ti++) tf[ti]=0;
+  draws.forEach(function(d){if(!d.created_at)return;var h=new Date(d.created_at).getUTCHours()+3;if(h>=24)h-=24;if(Math.abs(h-hour)<=2){var df=parseInt(d.first);tf[df]=(tf[df]||0)+1;}});
+  for(var tni=1;tni<=48;tni++) ns[tni]+=tf[tni]*5*0.1;
+  var mc={}; for(var mci=1;mci<=48;mci++) mc[mci]=0;
+  for(var sim=0;sim<500;sim++){var pool=[];for(var pi2=1;pi2<=48;pi2++){var w2=Math.floor(ns[pi2]+1);for(var ji=0;ji<w2;ji++)pool.push(pi2);}if(pool.length>0){mc[pool[Math.floor(Math.random()*pool.length)]]++;}}
+  for(var fni=1;fni<=48;fni++){ns[fni]+=mc[fni]*0.1;if(state==='TREND')ns[fni]*=1.1;else if(state==='CHAOS')ns[fni]*=0.9;}
+  var allCands=[]; for(var ai=1;ai<=48;ai++) allCands.push(ai);
+  allCands.sort(function(a,b){return ns[b]-ns[a];});
+  var filtCands = allCands.filter(function(x){ return predOU==='OVER' ? x>24 : x<=24; });
+  result.first_candidates  = filtCands.slice(0,5).sort(function(a,b){return a-b;});
+  result.first5_candidates = filtCands.slice(0,6).sort(function(a,b){return a-b;});
+  result.certain8          = allCands.slice(0,8).sort(function(a,b){return a-b;});
   return result;
 }
 
 function colorStyle(renk, hit) {
+  // Siyah icin ozel: koyu arka plan uzerine acik gri yazi
   if (renk === 'Siyah') {
     return hit
       ? 'background:#374151;border:2px solid #22c55e;color:#e5e7eb'
@@ -409,17 +297,21 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 500').then(function(result) {
+    db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 1000').then(function(result) {
       var rows=result.rows;
       var ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0;
       var f5T=0,f5S=0,c8T=0,c8S=0,c8FT=0,c8FS=0;
+      // Dağılım sayaçları
+      var f5Dist={0:0,1:0,2:0,3:0,4:0,5:0};
+      var c8Dist={0:0,1:0,2:0,3:0,4:0,5:0};
+      var c8fDist={0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0};
       rows.forEach(function(r){
         ouTotal++;   if(parseInt(r.ou_hit)===1)ouHit++;
         colorTotal++;if(parseInt(r.color_hit)===1)colorHit++;
         firstTotal++;if(parseInt(r.first_hit)===1)firstHit++;
-        var fm=parseInt(r.first5_match);   if(fm>=0){f5T++;f5S+=fm;}
-        var cm=parseInt(r.certain8_match); if(cm>=0){c8T++;c8S+=cm;}
-        var cfm=parseInt(r.certain8_full_match); if(cfm>=0){c8FT++;c8FS+=cfm;}
+        var fm=parseInt(r.first5_match);   if(fm>=0){f5T++;f5S+=fm;if(fm<=5)f5Dist[fm]=(f5Dist[fm]||0)+1;}
+        var cm=parseInt(r.certain8_match); if(cm>=0){c8T++;c8S+=cm;if(cm<=5)c8Dist[cm]=(c8Dist[cm]||0)+1;}
+        var cfm=parseInt(r.certain8_full_match); if(cfm>=0){c8FT++;c8FS+=cfm;if(cfm<=8)c8fDist[cfm]=(c8fDist[cfm]||0)+1;}
       });
       var ouPct    = ouTotal>0    ? Math.round(ouHit/ouTotal*100)       : 0;
       var colorPct = colorTotal>0 ? Math.round(colorHit/colorTotal*100) : 0;
@@ -482,10 +374,49 @@ function startDashboard() {
 
       h+='<div class="ar"><div class="sl">6 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+f5avg+' / 5</div></div>';
+
+      // 6 aday dağılımı
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130">';
+      h+='<div style="font-size:10px;color:#5a6180;margin-bottom:6px">6 ADAY \u2192 ILK5 DAGILIMI</div>';
+      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      for(var di=0;di<=5;di++){
+        var dc=di>=3?'#22c55e':di>=1?'#facc15':'#ef4444';
+        h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px">';
+        h+='<span style="color:#aab0c4">'+di+'/5: </span><span style="color:'+dc+';font-weight:800">'+(f5Dist[di]||0)+'x</span>';
+        h+='</div>';
+      }
+      h+='</div></div>';
+
       h+='<div class="ar"><div class="sl">8 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+c8avg+' / 5</div></div>';
+
+      // 8 aday ilk5 dağılımı
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130">';
+      h+='<div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY \u2192 ILK5 DAGILIMI</div>';
+      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      for(var di=0;di<=5;di++){
+        var dc=di>=3?'#22c55e':di>=1?'#facc15':'#ef4444';
+        h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px">';
+        h+='<span style="color:#aab0c4">'+di+'/5: </span><span style="color:'+dc+';font-weight:800">'+(c8Dist[di]||0)+'x</span>';
+        h+='</div>';
+      }
+      h+='</div></div>';
+
       h+='<div class="ar"><div class="sl">8 Aday \u2192 Full cekilis (35 sayi)\'de kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#a855f7">'+c8favg+' / 8</div></div>';
+
+      // 8 aday full dağılımı (5-8 arası değerli)
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130">';
+      h+='<div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY \u2192 35 SAYI DAGILIMI (6+ PARA ODÜYOR)</div>';
+      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      for(var di=0;di<=8;di++){
+        var dc=di>=6?'#22c55e':di>=5?'#facc15':'#ef4444';
+        var lbl=di>=6?di+'/8 \u2713':di+'/8';
+        h+='<div style="background:#1e2130;border:1px solid '+(di>=6?'#22c55e44':di>=5?'#facc1544':'#2a2f42')+';border-radius:8px;padding:4px 8px;font-size:12px">';
+        h+='<span style="color:#aab0c4">'+lbl+': </span><span style="color:'+dc+';font-weight:800">'+(c8fDist[di]||0)+'x</span>';
+        h+='</div>';
+      }
+      h+='</div></div>';
 
       h+='<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
 
@@ -505,6 +436,7 @@ function startDashboard() {
         var c8m  = parseInt(r.certain8_match)      >= 0 ? parseInt(r.certain8_match)      : '-';
         var c8fm = parseInt(r.certain8_full_match)  >= 0 ? parseInt(r.certain8_full_match)  : '-';
 
+        // Renk badge fonksiyonu
         function renkBadge(renk, hit) {
           if (!renk) return '?';
           var hex = COLOR_HEX[renk] || '#aab0c4';
@@ -515,6 +447,8 @@ function startDashboard() {
         }
 
         h+='<div class="rc">';
+
+        // Baslik satiri
         h+='<div class="rh">';
         h+='<span class="rn">Round '+r.round+'</span>';
         h+='<span style="font-size:13px;font-weight:800">';
@@ -524,12 +458,15 @@ function startDashboard() {
         h+='</span>';
         h+='</div>';
 
+        // Renk tahmini satiri
         if(r.pred_color){
           var predRenkHex = COLOR_HEX[r.pred_color] || '#aab0c4';
           var predRenkText = r.pred_color === 'Siyah' ? '#e5e7eb' : predRenkHex;
           h+='<div class="lbl">RENK TAHMIN\u0130</div>';
           h+='<div style="margin-bottom:6px">';
-          h+='<span class="renk-badge" style="color:'+predRenkText+';background:#1e2130;border:1px solid '+predRenkHex+'88">'+r.pred_color+'</span>';
+          h+='<span class="renk-badge" style="color:'+predRenkText+';background:#1e2130;border:1px solid '+predRenkHex+'88">';
+          h+=r.pred_color;
+          h+='</span>';
           if(colorHitR){
             h+=' <span style="color:#22c55e;font-size:12px;font-weight:800">\u2713 TUTTU</span>';
           } else {
@@ -539,6 +476,7 @@ function startDashboard() {
           h+='</div>';
         }
 
+        // TAHMIN 5 - ilk sayi adaylari
         if(pf1.length>0){
           h+='<div class="lbl">TAHMIN 5 \u2014 1. Sayi Adaylari</div>';
           h+='<div class="nr">';
@@ -550,6 +488,7 @@ function startDashboard() {
           h+='</div>';
         }
 
+        // GERCEK ILK 5
         if(af5.length>0){
           h+='<div class="lbl">GERCEK ILK 5</div>';
           h+='<div class="nr">';
@@ -559,6 +498,7 @@ function startDashboard() {
           h+='</div>';
         }
 
+        // TAHMIN 6
         if(pf5.length>0){
           h+='<div class="lbl">TAHMIN 6 \u2014 Ilk 5\'te Cikacak</div>';
           h+='<div class="nr">';
@@ -570,6 +510,7 @@ function startDashboard() {
           h+='</div>';
         }
 
+        // TAHMIN 8
         if(pc8.length>0){
           h+='<div class="lbl">TAHMIN 8 \u2014 Kesin Cikacak &nbsp;<span style="color:#a855f7;font-weight:900">'+c8fm+'/8 tuttu (35 sayida)</span></div>';
           h+='<div class="nr">';
@@ -589,6 +530,7 @@ function startDashboard() {
           h+='</div>';
         }
 
+        // Ozet
         h+='<div class="mi">';
         h+='<div class="mc">6 aday \u2192 ilk5: <strong style="color:'+(f5m>0?'#22c55e':'#aab0c4')+'">'+f5m+'/5</strong></div>';
         h+='<div class="mc">8 aday \u2192 ilk5: <strong style="color:'+(c8m>0?'#22c55e':'#aab0c4')+'">'+c8m+'/5</strong></div>';
@@ -696,5 +638,3 @@ function startDashboard() {
 
   app.listen(process.env.PORT || 3000, '0.0.0.0', function() { console.log('Dashboard: http://localhost:3000'); });
 }
-
-console.log('Basliyor...');
