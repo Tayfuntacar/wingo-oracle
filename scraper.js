@@ -296,12 +296,23 @@ function startDashboard() {
     }).catch(function(e){clearTimeout(timer);if(!res.headersSent)res.json({error:e.message});});
   });
 
+  app.get('/draws.json', function(req, res) {
+    db.query('SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY round ASC')
+    .then(function(result) {
+      var data = result.rows.map(function(r, i) {
+        return {seq:i+1, round:r.round, first:r.first, ou:r.over_under, color:r.color, numbers:r.all_numbers, ts:r.created_at};
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="draws.json"');
+      res.json(data);
+    }).catch(function(e){ res.status(500).json({error:e.message}); });
+  });
+
   app.get('/rapor', function(req, res) {
     db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 1000').then(function(result) {
       var rows=result.rows;
       var ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0;
       var f5T=0,f5S=0,c8T=0,c8S=0,c8FT=0,c8FS=0;
-      // Dağılım sayaçları
       var f5Dist={0:0,1:0,2:0,3:0,4:0,5:0};
       var c8Dist={0:0,1:0,2:0,3:0,4:0,5:0};
       var c8fDist={0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0};
@@ -374,48 +385,18 @@ function startDashboard() {
 
       h+='<div class="ar"><div class="sl">6 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+f5avg+' / 5</div></div>';
-
-      // 6 aday dağılımı
-      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130">';
-      h+='<div style="font-size:10px;color:#5a6180;margin-bottom:6px">6 ADAY \u2192 ILK5 DAGILIMI</div>';
-      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
-      for(var di=0;di<=5;di++){
-        var dc=di>=3?'#22c55e':di>=1?'#facc15':'#ef4444';
-        h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px">';
-        h+='<span style="color:#aab0c4">'+di+'/5: </span><span style="color:'+dc+';font-weight:800">'+(f5Dist[di]||0)+'x</span>';
-        h+='</div>';
-      }
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">6 ADAY DAGILIMI (ILK 5)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for(var _i=0;_i<=5;_i++){var _c=_i>=3?'#22c55e':_i>=1?'#facc15':'#ef4444';h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_i+'/5: </span><span style="color:'+_c+';font-weight:800">'+(f5Dist[_i]||0)+'x</span></div>';}
       h+='</div></div>';
-
       h+='<div class="ar"><div class="sl">8 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+c8avg+' / 5</div></div>';
-
-      // 8 aday ilk5 dağılımı
-      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130">';
-      h+='<div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY \u2192 ILK5 DAGILIMI</div>';
-      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
-      for(var di=0;di<=5;di++){
-        var dc=di>=3?'#22c55e':di>=1?'#facc15':'#ef4444';
-        h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px">';
-        h+='<span style="color:#aab0c4">'+di+'/5: </span><span style="color:'+dc+';font-weight:800">'+(c8Dist[di]||0)+'x</span>';
-        h+='</div>';
-      }
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY DAGILIMI (ILK 5)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for(var _j=0;_j<=5;_j++){var _d=_j>=3?'#22c55e':_j>=1?'#facc15':'#ef4444';h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_j+'/5: </span><span style="color:'+_d+';font-weight:800">'+(c8Dist[_j]||0)+'x</span></div>';}
       h+='</div></div>';
-
       h+='<div class="ar"><div class="sl">8 Aday \u2192 Full cekilis (35 sayi)\'de kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#a855f7">'+c8favg+' / 8</div></div>';
-
-      // 8 aday full dağılımı (5-8 arası değerli)
-      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130">';
-      h+='<div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY \u2192 35 SAYI DAGILIMI (6+ PARA ODÜYOR)</div>';
-      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
-      for(var di=0;di<=8;di++){
-        var dc=di>=6?'#22c55e':di>=5?'#facc15':'#ef4444';
-        var lbl=di>=6?di+'/8 \u2713':di+'/8';
-        h+='<div style="background:#1e2130;border:1px solid '+(di>=6?'#22c55e44':di>=5?'#facc1544':'#2a2f42')+';border-radius:8px;padding:4px 8px;font-size:12px">';
-        h+='<span style="color:#aab0c4">'+lbl+': </span><span style="color:'+dc+';font-weight:800">'+(c8fDist[di]||0)+'x</span>';
-        h+='</div>';
-      }
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY DAGILIMI (35 SAYI) — 6+ PARA ODUYOR</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for(var _k=0;_k<=8;_k++){var _e=_k>=6?'#22c55e':_k>=5?'#facc15':'#ef4444';var _brd=_k>=6?'#22c55e44':_k>=5?'#facc1544':'#2a2f42';h+='<div style="background:#1e2130;border:1px solid '+_brd+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_k+'/8: </span><span style="color:'+_e+';font-weight:800">'+(c8fDist[_k]||0)+'x</span></div>';}
       h+='</div></div>';
 
       h+='<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
