@@ -201,181 +201,91 @@ function predict(draws) {
   var colorList = draws.map(function(d) { return d.color; });
   var ouList    = draws.map(function(d) { return d.over_under; });
 
-  // ── OVER/UNDER: SERİ BAZLI (veri ile kanıtlandı: 4x+ = %100 döner) ──
-  var streak = calcStreak(firstNums);
-  var ouList2 = draws.map(function(d){return d.over_under;});
+  // ── OVER/UNDER: SERİ BAZLI (4x+ = %100 döner, veri kanıtladı) ──
   var streakOU = (function(){
-    var last = ouList2[0]; var cnt = 1;
-    for(var i=1;i<ouList2.length;i++){if(ouList2[i]===last)cnt++;else break;}
+    var last=ouList[0]; var cnt=1;
+    for(var i=1;i<ouList.length;i++){if(ouList[i]===last)cnt++;else break;}
     return {type:last,count:cnt};
   })();
-
   var predOU, ouConf, state='BALANCED';
-  if(streakOU.count >= 4) {
-    // 4x+ = %100 dönüyor (695 çekilişten kanıtlandı)
-    predOU = streakOU.type==='OVER'?'UNDER':'OVER';
-    ouConf = streakOU.count>=7?92:streakOU.count>=6?88:streakOU.count>=5?84:78;
-    state = 'REVERSAL';
-  } else if(streakOU.count===3) {
-    // 3x = genelde döner ama garantili değil, son 30'un dengesine bak
-    var ov30 = ouList2.slice(0,30).filter(function(x){return x==='OVER';}).length;
-    predOU = ov30>17?'UNDER':ov30<13?'OVER':( streakOU.type==='OVER'?'UNDER':'OVER');
-    ouConf = 62;
-    state = 'WARNING';
-  } else if(streakOU.count===2) {
-    // 2x — saatlik eğilime bak
+  if(streakOU.count>=4){
+    predOU=streakOU.type==='OVER'?'UNDER':'OVER';
+    ouConf=streakOU.count>=7?92:streakOU.count>=6?88:streakOU.count>=5?84:78;
+    state='REVERSAL';
+  } else if(streakOU.count===3){
+    var ov30=ouList.slice(0,30).filter(function(x){return x==='OVER';}).length;
+    predOU=ov30>17?'UNDER':ov30<13?'OVER':(streakOU.type==='OVER'?'UNDER':'OVER');
+    ouConf=62; state='WARNING';
+  } else if(streakOU.count===2){
     var hour2=new Date().getUTCHours()+3;if(hour2>=24)hour2-=24;
-    var hourBias={0:'OVER',1:'UNDER',2:'BALANCED',3:'OVER',4:'BALANCED',5:'UNDER',6:'BALANCED',7:'OVER',8:'BALANCED',9:'UNDER',10:'UNDER',11:'UNDER',12:'BALANCED',13:'BALANCED',14:'BALANCED',15:'BALANCED',16:'OVER',17:'UNDER',18:'UNDER',19:'BALANCED',20:'OVER',21:'UNDER',22:'BALANCED',23:'OVER'};
-    var hb = hourBias[hour2]||'BALANCED';
-    predOU = hb==='BALANCED'?streakOU.type:(hb==='OVER'?'OVER':'UNDER');
-    ouConf = 55;
-    state = 'BALANCED';
+    var hb={0:'OVER',1:'UNDER',3:'OVER',5:'UNDER',7:'OVER',9:'UNDER',10:'UNDER',11:'UNDER',16:'OVER',17:'UNDER',18:'UNDER',20:'OVER',21:'UNDER',23:'OVER'};
+    predOU=hb[hour2]||(streakOU.type==='OVER'?'UNDER':'OVER');
+    ouConf=55; state='BALANCED';
   } else {
-    // 1x — saatlik eğilim
     var hour3=new Date().getUTCHours()+3;if(hour3>=24)hour3-=24;
-    var hourBias2={0:'OVER',1:'UNDER',2:'BALANCED',3:'OVER',4:'BALANCED',5:'UNDER',6:'BALANCED',7:'OVER',8:'BALANCED',9:'UNDER',10:'UNDER',11:'UNDER',12:'BALANCED',13:'BALANCED',14:'BALANCED',15:'BALANCED',16:'OVER',17:'UNDER',18:'UNDER',19:'BALANCED',20:'OVER',21:'UNDER',22:'BALANCED',23:'OVER'};
-    var hb2 = hourBias2[hour3]||'BALANCED';
-    predOU = hb2==='BALANCED'?(streakOU.type==='OVER'?'UNDER':'OVER'):hb2;
-    ouConf = 52;
-    state = 'BALANCED';
+    var hb2={0:'OVER',1:'UNDER',3:'OVER',5:'UNDER',7:'OVER',9:'UNDER',10:'UNDER',11:'UNDER',16:'OVER',17:'UNDER',18:'UNDER',20:'OVER',21:'UNDER',23:'OVER'};
+    predOU=hb2[hour3]||(streakOU.type==='OVER'?'UNDER':'OVER');
+    ouConf=52; state='BALANCED';
   }
-  result.over_under = {pred:predOU, conf:ouConf, streak:streakOU, state:state};
+  var streak = streakOU;
+  result.over_under={pred:predOU,conf:ouConf,streak:streakOU,state:state};
 
-  // ── RENK: MARKOV + SOĞUKLUK (veri ile optimize edildi) ──
-  var colorCounts = {}; ALL_COLORS.forEach(function(c){colorCounts[c]=0;});
+  // ── RENK: MARKOV + SOĞUKLUK ──
+  var colorCounts={}; ALL_COLORS.forEach(function(c){colorCounts[c]=0;});
   colorList.slice(0,Math.min(200,n)).forEach(function(c){if(colorCounts[c]!==undefined)colorCounts[c]++;});
-  var colorLastSeen = {}; ALL_COLORS.forEach(function(c){colorLastSeen[c]=999;});
+  var colorLastSeen={}; ALL_COLORS.forEach(function(c){colorLastSeen[c]=999;});
   colorList.forEach(function(c,ci){if(colorLastSeen[c]===999)colorLastSeen[c]=ci;});
-
-  // Renk Markov — hangi renkten sonra ne geliyor (veriyle güçlü)
-  var colorMarkov = {};
-  for(var cmi=0;cmi<n-1;cmi++){
-    var c2=colorList[cmi]; var nx=colorList[cmi+1];
-    if(!colorMarkov[c2])colorMarkov[c2]={};
-    colorMarkov[c2][nx]=(colorMarkov[c2][nx]||0)+1;
-  }
-  var lastColor = colorList[0];
-  var colorMarkovScore = {};
-  ALL_COLORS.forEach(function(c){
-    if(colorMarkov[lastColor]){
-      var tot=Object.keys(colorMarkov[lastColor]).reduce(function(a,k){return a+colorMarkov[lastColor][k];},0);
-      colorMarkovScore[c] = tot>0?(colorMarkov[lastColor][c]||0)/tot*100:0;
-    } else { colorMarkovScore[c]=0; }
-  });
-
-  // Son 30'da hiç gelmeyenler (soğuk)
+  var colorMarkov={};
+  for(var cmi=0;cmi<n-1;cmi++){var c2=colorList[cmi];var nx=colorList[cmi+1];if(!colorMarkov[c2])colorMarkov[c2]={};colorMarkov[c2][nx]=(colorMarkov[c2][nx]||0)+1;}
+  var lastColor=colorList[0];
+  var colorMarkovScore={};
+  ALL_COLORS.forEach(function(c){if(colorMarkov[lastColor]){var tot=Object.keys(colorMarkov[lastColor]).reduce(function(a,k){return a+colorMarkov[lastColor][k];},0);colorMarkovScore[c]=tot>0?(colorMarkov[lastColor][c]||0)/tot*100:0;}else{colorMarkovScore[c]=0;}});
   var colorCounts30={}; ALL_COLORS.forEach(function(c){colorCounts30[c]=0;});
   colorList.slice(0,Math.min(30,n)).forEach(function(c){if(colorCounts30[c]!==undefined)colorCounts30[c]++;});
-  var coldColors = ALL_COLORS.filter(function(c){return colorCounts30[c]===0;});
+  var coldColors=ALL_COLORS.filter(function(c){return colorCounts30[c]===0;});
+  var cs={}; var exp200=200/8;
+  ALL_COLORS.forEach(function(c){cs[c]=Math.max(0,exp200-colorCounts[c])*3+Math.min(colorLastSeen[c],50)*1.5+colorMarkovScore[c]*2.5;});
+  var predColor=coldColors.length>0?coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0]:ALL_COLORS.slice().sort(function(a,b){return cs[b]-cs[a];})[0];
+  var colorConf=coldColors.length>=3?68:coldColors.length===2?55:42;
+  result.color={pred:predColor,conf:colorConf,counts:colorCounts,state:state};
 
-  var cs = {};
-  var expected100 = 100/8;
-  ALL_COLORS.forEach(function(c){
-    var deficit = Math.max(0, expected100 - colorCounts[c]) * 3;
-    var lastSeenScore = Math.min(colorLastSeen[c], 50) * 1.5;
-    var markovScore = colorMarkovScore[c] * 2.5;
-    cs[c] = deficit + lastSeenScore + markovScore;
-  });
-
-  var predColor;
-  if(coldColors.length>0){
-    predColor = coldColors.sort(function(a,b){return colorLastSeen[b]-colorLastSeen[a];})[0];
-  } else {
-    predColor = ALL_COLORS.slice().sort(function(a,b){return cs[b]-cs[a];})[0];
-  }
-  var colorConf = coldColors.length>=3?68:coldColors.length===2?55:42;
-  result.color = {pred:predColor, conf:colorConf, counts:colorCounts, state:state};
-
-  // ── İLK SAYI: GERÇEK FREKANS + SON GÖRÜLME + MARKOV ──
-  // Veri analizi: 29(3.7%), 21(3.0%), 20(2.9%), 39(2.7%), 5,8,7(2.7%) en çok geliyor
+  // ── İLK SAYI: FREKANS + SON GÖRÜLME + MARKOV ──
   var firstFreq={}; for(var i=1;i<=48;i++) firstFreq[i]=0;
-  firstNums.forEach(function(num,idx){ firstFreq[num]+=Math.exp(-0.03*idx); });
-
+  firstNums.forEach(function(num,idx){firstFreq[num]+=Math.exp(-0.03*idx);});
   var firstLastSeen={}; for(var i=1;i<=48;i++) firstLastSeen[i]=999;
   firstNums.forEach(function(num,idx){if(firstLastSeen[num]===999)firstLastSeen[num]=idx;});
-
-  // Markov: son sayıdan sonra en çok ne geliyor
   var numMarkov={};
-  for(var mi2=0;mi2<n-1;mi2++){
-    var pa=firstNums[mi2]; var pb=firstNums[mi2+1];
-    if(!numMarkov[pa])numMarkov[pa]={};
-    numMarkov[pa][pb]=(numMarkov[pa][pb]||0)+1;
-  }
+  for(var mi2=0;mi2<n-1;mi2++){var pa=firstNums[mi2];var pb=firstNums[mi2+1];if(!numMarkov[pa])numMarkov[pa]={};numMarkov[pa][pb]=(numMarkov[pa][pb]||0)+1;}
   var lastNum=firstNums[0];
-  var numMarkovScore={};
-  for(var i=1;i<=48;i++){
-    if(numMarkov[lastNum]){
-      var tot2=Object.keys(numMarkov[lastNum]).reduce(function(a,k){return a+numMarkov[lastNum][k];},0);
-      numMarkovScore[i]=tot2>0?(numMarkov[lastNum][i]||0)/tot2*100:0;
-    } else { numMarkovScore[i]=0; }
-  }
-
-  // Son 20'de gelmeyen sayılar
+  var numMarkovScore={}; for(var i=1;i<=48;i++){if(numMarkov[lastNum]){var tot2=Object.keys(numMarkov[lastNum]).reduce(function(a,k){return a+numMarkov[lastNum][k];},0);numMarkovScore[i]=tot2>0?(numMarkov[lastNum][i]||0)/tot2*100:0;}else{numMarkovScore[i]=0;}}
   var recent20=firstNums.slice(0,Math.min(20,n));
   var maxFreq=Math.max.apply(null,Object.keys(firstFreq).map(function(k){return firstFreq[k];}));
-
   var ns={};
-  for(var i=1;i<=48;i++){
-    var freqNorm = firstFreq[i]/maxFreq*100;
-    var lsNorm = Math.min(firstLastSeen[i],30)/30*100;
-    var coldBonus = recent20.indexOf(i)===-1?25:0;
-    var mkScore = numMarkovScore[i];
-    ns[i] = freqNorm*0.30 + lsNorm*0.30 + coldBonus*0.25 + mkScore*0.15;
-  }
-
+  for(var i=1;i<=48;i++){ns[i]=firstFreq[i]/maxFreq*100*0.30+Math.min(firstLastSeen[i],30)/30*100*0.30+(recent20.indexOf(i)===-1?25:0)*0.25+numMarkovScore[i]*0.15;}
   var allCands=[]; for(var i=1;i<=48;i++) allCands.push(i);
   allCands.sort(function(a,b){return ns[b]-ns[a];});
+  var filtCands=allCands.filter(function(x){return predOU==='OVER'?x>24:x<=24;});
+  if(filtCands.length<5)filtCands=allCands;
+  result.first_candidates=filtCands.slice(0,5).sort(function(a,b){return a-b;});
 
-  var filtCands = allCands.filter(function(x){return predOU==='OVER'?x>24:x<=24;});
-  if(filtCands.length<5) filtCands=allCands;
-  result.first_candidates = filtCands.slice(0,5).sort(function(a,b){return a-b;});
-
-  // İlk 5 adayı — ayrı skor (full çekilişteki konuma göre)
+  // ── İLK 5 ADAYLARI ──
   var pos5freq={}; for(var i=1;i<=48;i++) pos5freq[i]=0;
-  draws.forEach(function(d){
-    var nums=d.all_numbers?d.all_numbers.split(',').map(Number):[];
-    nums.slice(0,5).forEach(function(num){pos5freq[num]++;});
-  });
+  draws.forEach(function(d){var nums=d.all_numbers?d.all_numbers.split(',').map(Number):[];nums.slice(0,5).forEach(function(num){pos5freq[num]++;});});
   var maxPos5=Math.max.apply(null,Object.keys(pos5freq).map(function(k){return pos5freq[k];}));
-  var f5scores={};
-  for(var i=1;i<=48;i++){
-    var pf=pos5freq[i]/maxPos5*100;
-    var ls2=Math.min(firstLastSeen[i],30)/30*100;
-    var cold=recent20.indexOf(i)===-1?20:0;
-    f5scores[i]=pf*0.45+ls2*0.30+cold*0.25;
-  }
-  var f5cands=[];for(var i=1;i<=48;i++)f5cands.push(i);
+  var f5scores={}; for(var i=1;i<=48;i++){f5scores[i]=pos5freq[i]/maxPos5*100*0.45+Math.min(firstLastSeen[i],30)/30*100*0.30+(recent20.indexOf(i)===-1?20:0)*0.25;}
+  var f5cands=[]; for(var i=1;i<=48;i++) f5cands.push(i);
   f5cands.sort(function(a,b){return f5scores[b]-f5scores[a];});
-  result.first5_candidates = f5cands.slice(0,6).sort(function(a,b){return a-b;});
+  result.first5_candidates=f5cands.slice(0,6).sort(function(a,b){return a-b;});
 
-  // ── KESİN 8: FULL ÇEKİLİŞTE EN ÇOK ÇIKAN SABİT SAYILAR ──
-  // Veri analizi: 33(539x), 39(524x), 19(522x), 1(522x), 25(521x), 40(519x), 26(519x), 32(518x)
-  // Bu sayılar her çekilişte 0.75+ ortalama çıkıyor = sabit kesin 8
-  // Son 10 çekilişte az çıkanlara öncelik ver
+  // ── KESİN 8: FULL ÇEKİLİŞTE EN ÇOK ÇIKAN ──
   var fullFreq={}; for(var i=1;i<=48;i++) fullFreq[i]=0;
-  draws.slice(0,Math.min(50,n)).forEach(function(d,di){
-    var nums=d.all_numbers?d.all_numbers.split(',').map(Number):[];
-    nums.forEach(function(num){ fullFreq[num]+=Math.exp(-0.02*di); });
-  });
-
-  // Son 5 çekilişte gelmeyenler soğuk bonus alır
-  var recent5all=[];
-  draws.slice(0,5).forEach(function(d){
-    var nums=d.all_numbers?d.all_numbers.split(',').map(Number):[];
-    recent5all=recent5all.concat(nums);
-  });
-
+  draws.slice(0,Math.min(50,n)).forEach(function(d,di){var nums=d.all_numbers?d.all_numbers.split(',').map(Number):[];nums.forEach(function(num){fullFreq[num]+=Math.exp(-0.02*di);});});
+  var recent5all=[]; draws.slice(0,5).forEach(function(d){var nums=d.all_numbers?d.all_numbers.split(',').map(Number):[];recent5all=recent5all.concat(nums);});
   var maxFull=Math.max.apply(null,Object.keys(fullFreq).map(function(k){return fullFreq[k];}));
-  var ks={};
-  for(var i=1;i<=48;i++){
-    var fn=fullFreq[i]/maxFull*100;
-    var coldFull=recent5all.indexOf(i)===-1?20:0;
-    ks[i]=fn*0.70+coldFull*0.30;
-  }
-  var ksCands=[];for(var i=1;i<=48;i++)ksCands.push(i);
+  var ks={}; for(var i=1;i<=48;i++){ks[i]=fullFreq[i]/maxFull*100*0.70+(recent5all.indexOf(i)===-1?20:0)*0.30;}
+  var ksCands=[]; for(var i=1;i<=48;i++) ksCands.push(i);
   ksCands.sort(function(a,b){return ks[b]-ks[a];});
-  result.certain8 = ksCands.slice(0,8).sort(function(a,b){return a-b;});
-
+  result.certain8=ksCands.slice(0,8).sort(function(a,b){return a-b;});
   return result;
 }
 
@@ -412,18 +322,33 @@ function startDashboard() {
     }).catch(function(e){clearTimeout(timer);if(!res.headersSent)res.json({error:e.message});});
   });
 
+  app.get('/draws.json', function(req, res) {
+    db.query('SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY round ASC')
+    .then(function(result) {
+      var data = result.rows.map(function(r, i) {
+        return {seq:i+1, round:r.round, first:r.first, ou:r.over_under, color:r.color, numbers:r.all_numbers, ts:r.created_at};
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="draws.json"');
+      res.json(data);
+    }).catch(function(e){ res.status(500).json({error:e.message}); });
+  });
+
   app.get('/rapor', function(req, res) {
-    db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 500').then(function(result) {
+    db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 1000').then(function(result) {
       var rows=result.rows;
       var ouHit=0,ouTotal=0,colorHit=0,colorTotal=0,firstHit=0,firstTotal=0;
       var f5T=0,f5S=0,c8T=0,c8S=0,c8FT=0,c8FS=0;
+      var f5Dist={0:0,1:0,2:0,3:0,4:0,5:0};
+      var c8Dist={0:0,1:0,2:0,3:0,4:0,5:0};
+      var c8fDist={0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0};
       rows.forEach(function(r){
         ouTotal++;   if(parseInt(r.ou_hit)===1)ouHit++;
         colorTotal++;if(parseInt(r.color_hit)===1)colorHit++;
         firstTotal++;if(parseInt(r.first_hit)===1)firstHit++;
-        var fm=parseInt(r.first5_match);   if(fm>=0){f5T++;f5S+=fm;}
-        var cm=parseInt(r.certain8_match); if(cm>=0){c8T++;c8S+=cm;}
-        var cfm=parseInt(r.certain8_full_match); if(cfm>=0){c8FT++;c8FS+=cfm;}
+        var fm=parseInt(r.first5_match);   if(fm>=0){f5T++;f5S+=fm;if(fm<=5)f5Dist[fm]=(f5Dist[fm]||0)+1;}
+        var cm=parseInt(r.certain8_match); if(cm>=0){c8T++;c8S+=cm;if(cm<=5)c8Dist[cm]=(c8Dist[cm]||0)+1;}
+        var cfm=parseInt(r.certain8_full_match); if(cfm>=0){c8FT++;c8FS+=cfm;if(cfm<=8)c8fDist[cfm]=(c8fDist[cfm]||0)+1;}
       });
       var ouPct    = ouTotal>0    ? Math.round(ouHit/ouTotal*100)       : 0;
       var colorPct = colorTotal>0 ? Math.round(colorHit/colorTotal*100) : 0;
@@ -486,10 +411,19 @@ function startDashboard() {
 
       h+='<div class="ar"><div class="sl">6 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+f5avg+' / 5</div></div>';
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">6 ADAY DAGILIMI (ILK 5)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for(var _i=0;_i<=5;_i++){var _c=_i>=3?'#22c55e':_i>=1?'#facc15':'#ef4444';h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_i+'/5: </span><span style="color:'+_c+';font-weight:800">'+(f5Dist[_i]||0)+'x</span></div>';}
+      h+='</div></div>';
       h+='<div class="ar"><div class="sl">8 Aday \u2192 Gercek ilk5\'te kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#3b82f6">'+c8avg+' / 5</div></div>';
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY DAGILIMI (ILK 5)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for(var _j=0;_j<=5;_j++){var _d=_j>=3?'#22c55e':_j>=1?'#facc15':'#ef4444';h+='<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_j+'/5: </span><span style="color:'+_d+';font-weight:800">'+(c8Dist[_j]||0)+'x</span></div>';}
+      h+='</div></div>';
       h+='<div class="ar"><div class="sl">8 Aday \u2192 Full cekilis (35 sayi)\'de kac tuttu (ort.)</div>';
       h+='<div style="font-size:16px;font-weight:900;color:#a855f7">'+c8favg+' / 8</div></div>';
+      h+='<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">8 ADAY DAGILIMI (35 SAYI) — 6+ PARA ODUYOR</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for(var _k=0;_k<=8;_k++){var _e=_k>=6?'#22c55e':_k>=5?'#facc15':'#ef4444';var _brd=_k>=6?'#22c55e44':_k>=5?'#facc1544':'#2a2f42';h+='<div style="background:#1e2130;border:1px solid '+_brd+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_k+'/8: </span><span style="color:'+_e+';font-weight:800">'+(c8fDist[_k]||0)+'x</span></div>';}
+      h+='</div></div>';
 
       h+='<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
 
