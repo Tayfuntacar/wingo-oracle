@@ -549,15 +549,15 @@ function startDashboard() {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             // Yeşil = ilk 5'te çıktı | Kırmızı/turuncu = 35'te çıktı | Gri = çıkmadı
-            var bg  = inIlk5 ? '#0c2a3a' : inFull ? '#1a3a2a' : '#2a3040';
-            var brd = inIlk5 ? '#38bdf8'  : inFull ? '#a855f7' : '#4a5270';
-            var cl  = inIlk5 ? '#38bdf8'  : inFull ? '#a855f7' : '#aab0c4';
+            var bg  = inIlk5 ? '#1e6fa8' : inFull ? '#0c2a3a' : '#2a3040';
+            var brd = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#4a5270';
+            var cl  = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#aab0c4';
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0c2a3a;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 5\'te cikti</span>';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1a3a2a;border:2px solid #a855f7;vertical-align:middle"></span> 35 sayida cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 5\'te cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0c2a3a;border:2px solid #38bdf8;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
         }
@@ -645,9 +645,9 @@ function startDashboard() {
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
     h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 6 Sayi</div><div class=\'nums\'>";';
     h += 'pr.certain6.forEach(function(n){var isE=pr.certain6_grpA&&pr.certain6_grpA.indexOf(n)!==-1;';
-    h += 'h+="<div class=\'num\' style=\'background:"+(isE?"#0c2a3a":"#1a1a40")+";border:2px solid "+(isE?"#38bdf8":"#a855f7")+"\'>"+ n+"</div>";});';
+    h += 'h+="<div class=\'num\' style=\'background:"+("#0c2a3a")+";border:2px solid "+("#38bdf8")+"\'>"+ n+"</div>";});';
     h += 'h+="</div><div style=\'margin-top:8px;font-size:10px;color:#aab0c4;display:flex;gap:12px\'>";';
-    h += 'h+="<span style=\'color:#38bdf8\'>\u25CF Erken cikacak</span><span style=\'color:#a855f7\'>\u25CF Full cikacak</span></div></div>";}';
+    h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
     h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 8 Sayi</div><div class=\'nums\'>";';
     h += 'pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
