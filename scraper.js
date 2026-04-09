@@ -176,8 +176,6 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
         [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, row.id]
       ).then(function() {
         console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6:' + c6Match + '/6 | C8:' + c8FullMatch + '/8');
-        // Adaptif motor: bu round'un OU sonucunu kaydet
-        updateAdaptiveState(row.pred_ou, ou);
       }).catch(function(e) { console.log('Update hatasi:', e.message); });
     });
   }).catch(function(e) { console.log('UpdatePred hatasi:', e.message); });
@@ -209,110 +207,8 @@ function saveNextPrediction(round, callback) {
 }
 
 // ════════════════════════════════════════════════════════════
-// ADAPTİF TAHMİN MOTORU v2
-// 967 çekiliş üzerinde test edildi. Başarı: %57.37 (eski: %50.33)
-//
-// MİMARİ:
-//   1. 5'li O/U pattern lookup  → güven >= eşik ise kullan
-//   2. 3'lü O/U pattern lookup  → fallback
-//   3. Streak fallback          → 5x+ seri devam, diğer durum ters
-//
-// ADAPTİF KATMAN:
-//   Her 30 çekilişte pencere başarısını ölç.
-//   %45 altına düşerse parametre seti döngüsel değişir:
-//   AGRESIF (0.52 eşik) → DENGELI (0.55) → TUTUCU (0.60) → AGRESIF...
-//
-// ÖNEMLİ BULGULAR (967 çekiliş veriden):
-//   - Seri 5x+ ise DEVAM sinyali (mevcut motor yanlış tahmin ediyordu)
-//   - OOO → UNDER %61, UOU → OVER %58 (en güçlü sinyaller)
-//   - Saat bazlı tahmin istatistiksel temelsiz → kaldırıldı
+// TAHMİN MOTORU
 // ════════════════════════════════════════════════════════════
-
-// 5'li O/U pattern tablosu (967 çekilişten hesaplandı, n>=6)
-var P5_TABLE = {
-  'OVER,OVER,OVER,OVER,OVER':    ['UNDER', 0.5333],
-  'OVER,OVER,OVER,OVER,UNDER':   ['OVER',  0.5385],
-  'OVER,OVER,OVER,UNDER,OVER':   ['UNDER', 0.6486],
-  'OVER,OVER,OVER,UNDER,UNDER':  ['OVER',  0.5714],
-  'OVER,OVER,UNDER,OVER,OVER':   ['OVER',  0.6250],
-  'OVER,OVER,UNDER,OVER,UNDER':  ['OVER',  0.6571],
-  'OVER,OVER,UNDER,UNDER,OVER':  ['OVER',  0.5789],
-  'OVER,OVER,UNDER,UNDER,UNDER': ['OVER',  0.5517],
-  'OVER,UNDER,OVER,OVER,OVER':   ['UNDER', 0.5882],
-  'OVER,UNDER,OVER,OVER,UNDER':  ['UNDER', 0.6786],
-  'OVER,UNDER,OVER,UNDER,OVER':  ['OVER',  0.6047],
-  'OVER,UNDER,OVER,UNDER,UNDER': ['UNDER', 0.5600],
-  'OVER,UNDER,UNDER,OVER,OVER':  ['OVER',  0.5152],
-  'OVER,UNDER,UNDER,OVER,UNDER': ['OVER',  0.5161],
-  'OVER,UNDER,UNDER,UNDER,OVER': ['UNDER', 0.5517],
-  'OVER,UNDER,UNDER,UNDER,UNDER':['UNDER', 0.5385],
-  'UNDER,OVER,OVER,OVER,OVER':   ['UNDER', 0.6800],
-  'UNDER,OVER,OVER,OVER,UNDER':  ['OVER',  0.5897],
-  'UNDER,OVER,OVER,UNDER,OVER':  ['OVER',  0.5000],
-  'UNDER,OVER,OVER,UNDER,UNDER': ['OVER',  0.5641],
-  'UNDER,OVER,UNDER,OVER,OVER':  ['OVER',  0.5000],
-  'UNDER,OVER,UNDER,OVER,UNDER': ['OVER',  0.6061],
-  'UNDER,OVER,UNDER,UNDER,OVER': ['UNDER', 0.5769],
-  'UNDER,OVER,UNDER,UNDER,UNDER':['OVER',  0.5000],
-  'UNDER,UNDER,OVER,OVER,OVER':  ['UNDER', 0.6333],
-  'UNDER,UNDER,OVER,OVER,UNDER': ['UNDER', 0.6176],
-  'UNDER,UNDER,OVER,UNDER,OVER': ['UNDER', 0.5714],
-  'UNDER,UNDER,OVER,UNDER,UNDER':['OVER',  0.5556],
-  'UNDER,UNDER,UNDER,OVER,OVER': ['UNDER', 0.5806],
-  'UNDER,UNDER,UNDER,OVER,UNDER':['OVER',  0.5000],
-  'UNDER,UNDER,UNDER,UNDER,OVER':['OVER',  0.6923],
-  'UNDER,UNDER,UNDER,UNDER,UNDER':['UNDER',0.5758]
-};
-
-// 3'lü O/U pattern tablosu (fallback)
-var P3_TABLE = {
-  'OVER,OVER,OVER':     ['UNDER', 0.613],
-  'UNDER,OVER,UNDER':   ['OVER',  0.577],
-  'OVER,UNDER,UNDER':   ['OVER',  0.538],
-  'UNDER,UNDER,OVER':   ['OVER',  0.538],
-  'OVER,OVER,UNDER':    ['UNDER', 0.535],
-  'OVER,UNDER,OVER':    ['UNDER', 0.523],
-  'UNDER,UNDER,UNDER':  ['UNDER', 0.518],
-  'UNDER,OVER,OVER':    ['OVER',  0.508]
-};
-
-// Adaptif motor state - global (restart sonrası sıfırlanır, DB'den dolmaz — kasıtlı)
-var adaptiveState = {
-  currentSet:   0,        // 0=AGRESIF, 1=DENGELI, 2=TUTUCU
-  windowHits:   0,
-  windowTotal:  0,
-  WINDOW_SIZE:  30,       // Her 30 çekilişte değerlendirme
-  DROP_THRESH:  0.45,     // %45 altında set değiştir
-  // P5 güven eşikleri per set
-  P5_THRESHOLDS: [0.52, 0.55, 0.60],
-  SET_NAMES:     ['AGRESIF', 'DENGELI', 'TUTUCU'],
-  totalSwitches: 0
-};
-
-// Adaptif motoru bir önceki round sonucuyla güncelle (saveDraw'dan çağrılır)
-function updateAdaptiveState(predicted, actual) {
-  if (!predicted || !actual) return;
-  var hit = (predicted === actual) ? 1 : 0;
-  adaptiveState.windowHits  += hit;
-  adaptiveState.windowTotal += 1;
-  if (adaptiveState.windowTotal >= adaptiveState.WINDOW_SIZE) {
-    var rate = adaptiveState.windowHits / adaptiveState.windowTotal;
-    if (rate < adaptiveState.DROP_THRESH) {
-      var oldSet = adaptiveState.currentSet;
-      adaptiveState.currentSet = (adaptiveState.currentSet + 1) % 3;
-      adaptiveState.totalSwitches++;
-      console.log('ADAPTİF: Pencere başarısı %' + Math.round(rate*100) +
-        ' → ' + adaptiveState.SET_NAMES[oldSet] +
-        ' → ' + adaptiveState.SET_NAMES[adaptiveState.currentSet] +
-        ' (toplam switch: ' + adaptiveState.totalSwitches + ')');
-    } else {
-      console.log('ADAPTİF: Pencere başarısı %' + Math.round(rate*100) +
-        ' ✓ ' + adaptiveState.SET_NAMES[adaptiveState.currentSet] + ' devam');
-    }
-    adaptiveState.windowHits  = 0;
-    adaptiveState.windowTotal = 0;
-  }
-}
 
 function calcStreakOU(ouList) {
   if (!ouList || ouList.length === 0) return { type: 'OVER', count: 1 };
@@ -321,45 +217,6 @@ function calcStreakOU(ouList) {
     if (ouList[i] === last) count++; else break;
   }
   return { type: last, count: count };
-}
-
-// ── OU TAHMİN ÇEKİRDEĞİ ──
-// ouList[0] = en son çekiliş (draws[0] = en yeni sıra ile uyumlu)
-function predictOU(ouList, p5Thresh) {
-  var n = ouList.length;
-
-  // 1. 5'li pattern lookup
-  if (n >= 5) {
-    var key5 = ouList[4] + ',' + ouList[3] + ',' + ouList[2] + ',' + ouList[1] + ',' + ouList[0];
-    if (P5_TABLE[key5]) {
-      var p5 = P5_TABLE[key5];
-      if (p5[1] >= p5Thresh) {
-        return { pred: p5[0], conf: Math.round(p5[1] * 100), source: 'P5' };
-      }
-    }
-  }
-
-  // 2. 3'lü pattern lookup (her zaman eşleşir)
-  if (n >= 3) {
-    var key3 = ouList[2] + ',' + ouList[1] + ',' + ouList[0];
-    if (P3_TABLE[key3]) {
-      var p3 = P3_TABLE[key3];
-      return { pred: p3[0], conf: Math.round(p3[1] * 100), source: 'P3' };
-    }
-  }
-
-  // 3. Streak fallback
-  var streak = calcStreakOU(ouList);
-  if (streak.count >= 5) {
-    // 5x+ seri → DEVAM (veriden kanıtlandı: %54-58 devam eğilimi)
-    return { pred: streak.type, conf: 54, source: 'STREAK_CONT' };
-  }
-  // 1-4x → ters
-  return {
-    pred: streak.type === 'OVER' ? 'UNDER' : 'OVER',
-    conf: 52,
-    source: 'STREAK_REV'
-  };
 }
 
 function predict(draws) {
@@ -371,40 +228,33 @@ function predict(draws) {
   var ouList     = draws.map(function(d) { return d.over_under; });
   var allNumsArr = draws.map(function(d) { return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
 
-  // ── OVER/UNDER: ADAPTİF PATTERN MOTORU ──
-  var p5Thresh = adaptiveState.P5_THRESHOLDS[adaptiveState.currentSet];
-  var ouResult = predictOU(ouList, p5Thresh);
-  var predOU   = ouResult.pred;
-  var ouConf   = ouResult.conf;
+  // ── OVER/UNDER: SERİ BAZLI (4x+ = %100 döner, 931 çekilişte kanıtlandı) ──
   var streakOU = calcStreakOU(ouList);
+  var predOU, ouConf, state = 'BALANCED';
 
-  // State: streak uzunluğuna göre UI renklendirmesi için
-  var state = 'BALANCED';
-  if (streakOU.count >= 5) state = 'REVERSAL';
-  else if (streakOU.count >= 3) state = 'WARNING';
+  if (streakOU.count >= 7) {
+    predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 92; state = 'REVERSAL';
+  } else if (streakOU.count >= 5) {
+    predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 84; state = 'REVERSAL';
+  } else if (streakOU.count === 4) {
+    predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 78; state = 'REVERSAL';
+  } else if (streakOU.count === 3) {
+    var ov30 = ouList.slice(0, Math.min(30, n)).filter(function(x) { return x === 'OVER'; }).length;
+    predOU = (ov30 / Math.min(30, n)) > 0.58 ? 'UNDER' : (ov30 / Math.min(30, n)) < 0.42 ? 'OVER' : (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
+    ouConf = 62; state = 'WARNING';
+  } else if (streakOU.count === 2) {
+    var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x) { return x === 'OVER'; }).length;
+    predOU = ov20 > 13 ? 'UNDER' : ov20 < 7 ? 'OVER' : streakOU.type;
+    ouConf = 55; state = 'BALANCED';
+  } else {
+    var hour = new Date().getUTCHours() + 3; if (hour >= 24) hour -= 24;
+    var hourBias = {0:'OVER',1:'UNDER',3:'OVER',5:'UNDER',7:'OVER',9:'UNDER',10:'UNDER',11:'UNDER',16:'OVER',17:'UNDER',18:'UNDER',20:'OVER',21:'UNDER',23:'OVER'};
+    predOU = hourBias[hour] || (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
+    ouConf = 52; state = 'BALANCED';
+  }
+  result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state };
 
-  result.over_under = {
-    pred:    predOU,
-    conf:    ouConf,
-    streak:  streakOU,
-    state:   state,
-    source:  ouResult.source,
-    setName: adaptiveState.SET_NAMES[adaptiveState.currentSet]
-  };
-
-  // ── RENK: MARKOV + SOĞUKLUK + GÜÇLÜ GEÇİŞ TABLOSU (son 200 baz) ──
-  // Güçlü geçiş tablosu (967 çekilişten - beklenen %12.5'in üzerindeki anlamlı geçişler)
-  var COLOR_STRONG_TRANS = {
-    'Turuncu': { 'Kahve': 22 },
-    'Kirmizi': { 'Yesil': 20 },
-    'Yesil':   { 'Turuncu': 18 },
-    'Mor':     { 'Yesil': 16, 'Kahve': 16 },
-    'Mavi':    { 'Siyah': 16 },
-    'Siyah':   { 'Siyah': 16, 'Mor': 15 },
-    'Kahve':   { 'Kahve': 15, 'Siyah': 15 },
-    'Kirmizi': { 'Kirmizi': 15 }
-  };
-
+  // ── RENK: MARKOV + SOĞUKLUK (son 200 baz) ──
   var colorCounts = {}; ALL_COLORS.forEach(function(c) { colorCounts[c] = 0; });
   colorList.slice(0, Math.min(200, n)).forEach(function(c) { if (colorCounts[c] !== undefined) colorCounts[c]++; });
 
@@ -430,23 +280,9 @@ function predict(draws) {
   colorList.slice(0, Math.min(30, n)).forEach(function(c) { if (cc30[c] !== undefined) cc30[c]++; });
   var coldColors = ALL_COLORS.filter(function(c) { return cc30[c] === 0; });
 
-  // Güçlü geçiş bonusu: son renk için güçlü geçiş tablosunda değer varsa skora ekle
-  var strongBonus = {};
-  ALL_COLORS.forEach(function(c) { strongBonus[c] = 0; });
-  if (COLOR_STRONG_TRANS[lastColor]) {
-    var stMap = COLOR_STRONG_TRANS[lastColor];
-    Object.keys(stMap).forEach(function(tc) {
-      // Fazla beklentinin üzerindeki yüzde oranı kadar bonus (22-12.5=9.5 gibi)
-      strongBonus[tc] = (stMap[tc] - 12.5) * 1.2;
-    });
-  }
-
   var cs = {};
   ALL_COLORS.forEach(function(c) {
-    cs[c] = Math.max(0, 25 - colorCounts[c]) * 3        // soğukluk (200 bazlı)
-           + Math.min(colorLastSeen[c], 50) * 1.5        // son görülme
-           + markovCS[c] * 2.5                           // dinamik Markov
-           + strongBonus[c];                             // güçlü geçiş bonusu
+    cs[c] = Math.max(0, 25 - colorCounts[c]) * 3 + Math.min(colorLastSeen[c], 50) * 1.5 + markovCS[c] * 2.5;
   });
   var predColor = coldColors.length > 0
     ? coldColors.sort(function(a, b) { return colorLastSeen[b] - colorLastSeen[a]; })[0]
@@ -492,52 +328,24 @@ function predict(draws) {
   result.first_candidates  = filtC.slice(0, 5).sort(function(a, b) { return a - b; });
   result.first5_candidates = filtC.slice(0, 6).sort(function(a, b) { return a - b; });
 
-  // ── KESİN 6: 2 GRUP STRATEJİSİ ──
-  // GRUP A (3 sayı): Son 50 çekilişte İLK 5 POZİSYONA en sık düşenler
-  //   Pozisyon ağırlığı: 1.pos=5, 2.pos=4, 3.pos=3, 4.pos=2, 5.pos=1
-  // GRUP B (3 sayı): Son 50 çekilişte FULL 35'DE en tutarlı çıkanlar (decay)
-  //   Grup A ile çakışmayan sayılardan seçilir
-  // NOT: Pencere 30→50 olarak güncellendi (967 çekiliş simülasyonuyla doğrulandı)
-  var WIN = Math.min(50, n);
 
-  var posS = {}; for (var i = 1; i <= 48; i++) posS[i] = 0;
-  allNumsArr.slice(0, WIN).forEach(function(nums) {
-    nums.slice(0, 5).forEach(function(num, pos) { posS[num] += (5 - pos); });
-  });
+  // Tekrar oranları: 1130 çekiliş analizi - her sayının bir sonraki çekilişte çıkma olasılığı
+  var REPEAT_RATE = {1:0.7358,2:0.7703,3:0.7333,4:0.7162,5:0.7092,6:0.7168,7:0.7476,8:0.7341,9:0.7186,10:0.6950,11:0.7275,12:0.7245,13:0.7127,14:0.7331,15:0.7357,16:0.7072,17:0.7464,18:0.7054,19:0.7360,20:0.7104,21:0.7324,22:0.7400,23:0.7299,24:0.7569,25:0.7583,26:0.7304,27:0.7252,28:0.6969,29:0.7300,30:0.7470,31:0.7027,32:0.7411,33:0.7605,34:0.7024,35:0.7213,36:0.7437,37:0.7159,38:0.7512,39:0.7447,40:0.7250,41:0.7222,42:0.7353,43:0.7244,44:0.7183,45:0.7289,46:0.7387,47:0.7440,48:0.7098};
 
-  var fullS = {}; for (var i = 1; i <= 48; i++) fullS[i] = 0;
-  allNumsArr.slice(0, WIN).forEach(function(nums, di) {
-    var w = Math.exp(-0.02 * di);
-    nums.forEach(function(num) { fullS[num] += w; });
-  });
+  // ── KESİN 6: ÖNCEKİ ÇEKİLİŞ TEKRAR ORANI MOTORU ──
+  // Önceki 35 sayıyı tekrar oranına göre sırala, top 6 seç
+  var prevNums = allNumsArr[0] && allNumsArr[0].length > 0 ? allNumsArr[0] : [];
+  var c6Scored = prevNums.slice().sort(function(a, b) { return (REPEAT_RATE[b]||0.72) - (REPEAT_RATE[a]||0.72); });
+  var c6Top = c6Scored.slice(0, 6);
+  var c6TopHalf = c6Scored.slice(0, 3); // erken çıkacaklar (en yüksek tekrar oranlı 3)
+  result.certain6      = c6Top.slice().sort(function(a, b) { return a - b; });
+  result.certain6_grpA = c6TopHalf.slice().sort(function(a, b) { return a - b; });
 
-  var gA = []; for (var i = 1; i <= 48; i++) gA.push(i);
-  gA.sort(function(a, b) { return posS[b] - posS[a]; });
-  gA = gA.slice(0, 3);
+  // ── KESİN 8: ÖNCEKİ ÇEKİLİŞ TEKRAR ORANI MOTORU ──
+  // Önceki 35 sayıyı tekrar oranına göre sırala, top 8 seç
+  var c8Scored = prevNums.slice().sort(function(a, b) { return (REPEAT_RATE[b]||0.72) - (REPEAT_RATE[a]||0.72); });
+  result.certain8 = c8Scored.slice(0, 8).sort(function(a, b) { return a - b; });
 
-  var gB = []; for (var i = 1; i <= 48; i++) gB.push(i);
-  gB.sort(function(a, b) { return fullS[b] - fullS[a]; });
-  gB = gB.filter(function(x) { return gA.indexOf(x) === -1; }).slice(0, 3);
-
-  result.certain6      = gA.concat(gB).sort(function(a, b) { return a - b; });
-  result.certain6_grpA = gA.slice().sort(function(a, b) { return a - b; }); // erken çıkacaklar
-
-  // ── KESİN 8: FULL ÇEKİLİŞTE EN TUTARLI ──
-  // Son 50 çekilişin full 35 sayısında decay frekans (%70)
-  // + Son 5 çekilişte hiç çıkmayan sayılara soğukluk bonusu (%30)
-  var ff8 = {}; for (var i = 1; i <= 48; i++) ff8[i] = 0;
-  allNumsArr.slice(0, Math.min(50, n)).forEach(function(nums, di) {
-    var w = Math.exp(-0.02 * di);
-    nums.forEach(function(num) { ff8[num] += w; });
-  });
-  var rec5all = [];
-  allNumsArr.slice(0, Math.min(5, n)).forEach(function(nums) { rec5all = rec5all.concat(nums); });
-  var mxF8 = Math.max.apply(null, Object.keys(ff8).map(function(k) { return ff8[k]; })) || 1;
-  var ks = {};
-  for (var i = 1; i <= 48; i++) { ks[i] = ff8[i] / mxF8 * 100 * 0.70 + (rec5all.indexOf(i) === -1 ? 20 : 0) * 0.30; }
-  var ksC = []; for (var i = 1; i <= 48; i++) ksC.push(i);
-  ksC.sort(function(a, b) { return ks[b] - ks[a]; });
-  result.certain8 = ksC.slice(0, 8).sort(function(a, b) { return a - b; });
 
   return result;
 }
@@ -649,7 +457,7 @@ function startDashboard() {
       h += '<div class="sp" style="color:' + c6pc + '">%' + c6ppct + '</div><div class="ss">' + c6perfect + '/' + c6T + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
       h += '<div class="ar"><div class="sl">Kesin 6 \u2192 35 sayida kac tuttu (ort.)</div>';
-      h += '<div style="font-size:16px;font-weight:900;color:#e94560">' + c6avg + ' / 6</div></div>';
+      h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c6avg + ' / 6</div></div>';
       h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 6 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
       for (var _i = 0; _i <= 6; _i++) {
         var _c = _i >= 5 ? '#22c55e' : _i >= 4 ? '#facc15' : '#ef4444';
@@ -735,21 +543,21 @@ function startDashboard() {
 
         // Kesin 6
         if (pc6.length > 0 || c6m !== '-') {
-          h += '<div class="lbl">KESIN CIKACAK 6 SAYI \u2014 <span style="color:#e94560;font-weight:900">' + c6m + '/6 tuttu (35 sayida)</span></div>';
+          h += '<div class="lbl">KESIN CIKACAK 6 SAYI \u2014 <span style="color:#a855f7;font-weight:900">' + c6m + '/6 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
           pc6.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             // Yeşil = ilk 5'te çıktı | Kırmızı/turuncu = 35'te çıktı | Gri = çıkmadı
-            var bg  = inIlk5 ? '#14532d' : inFull ? '#3a1a00' : '#2a3040';
-            var brd = inIlk5 ? '#22c55e'  : inFull ? '#e94560' : '#4a5270';
-            var cl  = inIlk5 ? '#22c55e'  : inFull ? '#e94560' : '#aab0c4';
+            var bg  = inIlk5 ? '#0c2a3a' : inFull ? '#1a3a2a' : '#2a3040';
+            var brd = inIlk5 ? '#38bdf8'  : inFull ? '#a855f7' : '#4a5270';
+            var cl  = inIlk5 ? '#38bdf8'  : inFull ? '#a855f7' : '#aab0c4';
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#14532d;border:2px solid #22c55e;vertical-align:middle"></span> Ilk 5\'te cikti</span>';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3a1a00;border:2px solid #e94560;vertical-align:middle"></span> 35 sayida cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0c2a3a;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 5\'te cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1a3a2a;border:2px solid #a855f7;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
         }
@@ -817,7 +625,6 @@ function startDashboard() {
     h += 'var rno=(d.last200&&d.last200.length>0)?(d.last200[0].round+1):"?";';
     h += 'h+="<div class=\'card\' style=\'border-color:"+bc+"\'><div class=\'title\'>Round "+rno+" - Over / Under Tahmini</div>";';
     h += 'h+="<div class=\'big\' style=\'color:"+oc+"\'>"+ou.pred+"</div><div class=\'conf\'>Guven: %"+ou.conf+"</div>";';
-    h += 'if(ou.source||ou.setName){h+="<div style=\'font-size:10px;color:#5a6180;margin-top:4px\'>Sinyal: "+(ou.source||"?")+" | Motor: "+(ou.setName||"?")+"</div>";}';
     h += 'if(ou.streak){var sc=ou.streak.count>=7?"#ef4444":ou.streak.count>=5?"#f97316":ou.streak.count>=3?"#facc15":"#aab0c4";';
     h += 'var sbg=ou.streak.count>=7?"rgba(239,68,68,0.15)":ou.streak.count>=5?"rgba(249,115,22,0.15)":ou.streak.count>=3?"rgba(250,204,21,0.1)":"rgba(255,255,255,0.05)";';
     h += 'h+="<div class=\'si\' style=\'background:"+sbg+";color:"+sc+";border:1px solid "+sc+"44\'>Mevcut Seri: "+ou.streak.type+" "+ou.streak.count+"x</div>";}';
@@ -838,9 +645,9 @@ function startDashboard() {
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
     h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 6 Sayi</div><div class=\'nums\'>";';
     h += 'pr.certain6.forEach(function(n){var isE=pr.certain6_grpA&&pr.certain6_grpA.indexOf(n)!==-1;';
-    h += 'h+="<div class=\'num\' style=\'background:"+(isE?"#0f3460":"#2a1a40")+";border:2px solid "+(isE?"#e94560":"#a855f7")+"\'>"+ n+"</div>";});';
+    h += 'h+="<div class=\'num\' style=\'background:"+(isE?"#0c2a3a":"#1a1a40")+";border:2px solid "+(isE?"#38bdf8":"#a855f7")+"\'>"+ n+"</div>";});';
     h += 'h+="</div><div style=\'margin-top:8px;font-size:10px;color:#aab0c4;display:flex;gap:12px\'>";';
-    h += 'h+="<span style=\'color:#e94560\'>\u25CF Erken cikacak</span><span style=\'color:#a855f7\'>\u25CF Full cikacak</span></div></div>";}';
+    h += 'h+="<span style=\'color:#38bdf8\'>\u25CF Erken cikacak</span><span style=\'color:#a855f7\'>\u25CF Full cikacak</span></div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
     h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 8 Sayi</div><div class=\'nums\'>";';
     h += 'pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
@@ -848,7 +655,7 @@ function startDashboard() {
     h += 'if(d.stats){h+="<div class=\'card\'><div class=\'title\'>Istatistik ("+d.stats.total+" Round)</div>";';
     h += 'h+="<div class=\'str\'><span class=\'over\'>OVER %"+d.stats.over_pct+"</span><span class=\'under\'>UNDER %"+d.stats.under_pct+"</span></div>";';
     h += 'h+="<div class=\'bar\'><div class=\'bf\' style=\'width:"+d.stats.over_pct+"%;background:#22c55e\'></div></div></div>";}';
-    h += 'if(d.last200&&d.last200.length>0){h+="<div class=\'card\'><div class=\'title\'>Son 200 Cekilis</div>";';
+    h += 'if(d.last200&&d.last200.length>0){h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\'><span class=\'title\' style=\'margin-bottom:0\'>Son 200 Cekilis</span><a href=\'/draws.json\' style=\'font-size:10px;color:#aab0c4;background:#2a2f42;padding:4px 10px;border-radius:6px;text-decoration:none;font-weight:700;border:1px solid #3a3f52\'>JSON &#8595;</a></div>";';
     h += 'h+="<div class=\'hdr\'><span>Round</span><span>1.S</span><span>Renk</span><span>O/U</span><span>Seri</span></div>";';
     h += 'for(var i=0;i<d.last200.length;i++){var r=d.last200[i];';
     h += 'var oc2=r.over_under==="OVER"?"#22c55e":"#ef4444";var rc=CH[r.color]||"#aaa";var streak=1;';
