@@ -569,7 +569,7 @@ function startDashboard() {
         }
 
         // Kesin 6
-        if (pc6.length > 0) {
+        if (pc6.length > 0 || c6m !== '-') {
           h += '<div class="lbl">KESIN CIKACAK 6 SAYI \u2014 <span style="color:#e94560;font-weight:900">' + c6m + '/6 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
           pc6.forEach(function(num) {
