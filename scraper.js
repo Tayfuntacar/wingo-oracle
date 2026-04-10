@@ -308,19 +308,83 @@ function predict(draws) {
     });
   }
 
-  // ── OVER/UNDER: SERİ BAZLI + DÖNEM EĞİLİMİ + MS SİNYALİ ──
+  // ── OVER/UNDER: SERİ BAZLI + DÖNEM EĞİLİMİ + MS SİNYALİ + RENK SİNYALİ ──
   var streakOU = calcStreakOU(ouList);
   var predOU, ouConf, state = 'BALANCED';
 
   // Son 10 ve 20 çekilişin OVER oranı (dönem eğilimi)
   var ov10 = ouList.slice(0, Math.min(10, n)).filter(function(x) { return x === 'OVER'; }).length;
   var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x) { return x === 'OVER'; }).length;
-  var pct10 = ov10 / Math.min(10, n); // son 10'daki OVER oranı
-  var pct20 = ov20 / Math.min(20, n); // son 20'deki OVER oranı
-  // Dönem eğilimi: son 10 ağırlıklı
+  var pct10 = ov10 / Math.min(10, n);
+  var pct20 = ov20 / Math.min(20, n);
   var trendPct = pct10 * 0.6 + pct20 * 0.4;
-  // trendPct < 0.42 → UNDER dönemi, > 0.58 → OVER dönemi
 
+  // ── RENK BAZLI OU SİNYALLERİ (1500 çekiliş analizi) ──
+  // Format: önceki N turda hangi renk hangi koşulda → şimdiki / gelecek tur sinyal
+  var colorOUSignal = null; // 'OVER' veya 'UNDER'
+  var colorOUConf   = 0;
+  var colorOUState  = '';
+
+  // Renk → sayı grupları (sinyal hesabı için)
+  var CNU = {
+    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+  };
+
+  function colorCount(numsArr, color) {
+    if (!CNU[color] || !numsArr) return 0;
+    return numsArr.filter(function(x){ return CNU[color].indexOf(x) !== -1; }).length;
+  }
+
+  // Son 2 çekilişin verileri
+  var prevNums0 = allNumsArr[0] || []; // 1 tur önce
+  var prevNums1 = allNumsArr[1] || []; // 2 tur önce
+  var prevColor0 = colorList[0];       // 1 tur önceki ilk renk
+  var prevColor1 = colorList[1];       // 2 tur önceki ilk renk
+
+  var cnt0 = prevColor0 ? colorCount(prevNums0, prevColor0) : -1;
+  var cnt1 = prevColor1 ? colorCount(prevNums1, prevColor1) : -1;
+
+  // ── SİNYAL TABLOSU (test: 1500 çekiliş, fark >10 puan olanlar) ──
+  // Sarı Full+İlk → +2. turda UNDER %76 (fark -28)
+  if (cnt1 === 6 && prevColor1 === 'Sari') {
+    colorOUSignal = 'UNDER'; colorOUConf = 76; colorOUState = 'SARI_FULL_ILK_+2';
+  }
+  // Yeşil Full+İlk → +2. turda OVER %69 (fark +17)
+  else if (cnt1 === 6 && prevColor1 === 'Yesil') {
+    colorOUSignal = 'OVER'; colorOUConf = 69; colorOUState = 'YESIL_FULL_ILK_+2';
+  }
+  // Yeşil Maks3+İlk → +1. turda UNDER %64 (fark -16)
+  else if (cnt0 === 3 && prevColor0 === 'Yesil') {
+    colorOUSignal = 'UNDER'; colorOUConf = 64; colorOUState = 'YESIL_MAKS3_ILK_+1';
+  }
+  // Mor Full+İlk → +1. ve +2. turda UNDER %39 (fark -13)
+  else if ((cnt0 === 6 && prevColor0 === 'Mor') || (cnt1 === 6 && prevColor1 === 'Mor')) {
+    colorOUSignal = 'UNDER'; colorOUConf = 61; colorOUState = 'MOR_FULL_ILK';
+  }
+  // Kırmızı Maks3+İlk → +1. ve +2. turda OVER %65 (fark +13)
+  else if ((cnt0 === 3 && prevColor0 === 'Kirmizi') || (cnt1 === 3 && prevColor1 === 'Kirmizi')) {
+    colorOUSignal = 'OVER'; colorOUConf = 65; colorOUState = 'KIRMIZI_MAKS3_ILK';
+  }
+  // Kırmızı Full+İlk → +1. turda UNDER %60 (fark -12)
+  else if (cnt0 === 6 && prevColor0 === 'Kirmizi') {
+    colorOUSignal = 'UNDER'; colorOUConf = 60; colorOUState = 'KIRMIZI_FULL_ILK_+1';
+  }
+  // Siyah Maks5+İlk → +2. turda OVER %62 (fark +10)
+  else if (cnt1 === 5 && prevColor1 === 'Siyah') {
+    colorOUSignal = 'OVER'; colorOUConf = 62; colorOUState = 'SIYAH_MAKS5_ILK_+2';
+  }
+  // Turuncu Maks3+İlk → +2. turda UNDER %61 (fark -13)
+  else if (cnt1 === 3 && prevColor1 === 'Turuncu') {
+    colorOUSignal = 'UNDER'; colorOUConf = 61; colorOUState = 'TURUNCU_MAKS3_ILK_+2';
+  }
+  // Mor Maks3+İlk → +2. ve +3. turda OVER %61 (fark +9)
+  else if (cnt1 === 3 && prevColor1 === 'Mor') {
+    colorOUSignal = 'OVER'; colorOUConf = 61; colorOUState = 'MOR_MAKS3_ILK_+2';
+  }
+
+  // ── KARAR MANTIĞI ──
   if (streakOU.count >= 7) {
     predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 92; state = 'REVERSAL';
   } else if (streakOU.count >= 5) {
@@ -328,21 +392,19 @@ function predict(draws) {
   } else if (streakOU.count === 4) {
     predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 78; state = 'REVERSAL';
   } else if (streakOU.count === 3) {
-    // 3x seri → seriyle devam et (tersine gidince hata oluyor)
-    predOU = streakOU.type;
-    ouConf = 55; state = 'TREND';
+    predOU = streakOU.type; ouConf = 55; state = 'TREND';
   } else {
-    // 1-2x seri: ms sinyali varsa kullan, yoksa dönem eğilimi
-    if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
-      predOU = MS_OU_SIGNAL[predMs];
-      ouConf = 60; state = 'MS_SIGNAL';
+    // 1-2x seri: önce renk sinyali, sonra ms, sonra dönem eğilimi
+    if (colorOUSignal) {
+      predOU = colorOUSignal; ouConf = colorOUConf; state = colorOUState;
+    } else if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
+      predOU = MS_OU_SIGNAL[predMs]; ouConf = 60; state = 'MS_SIGNAL';
     } else if (trendPct > 0.62) {
       predOU = 'OVER'; ouConf = 58; state = 'TREND_OVER';
     } else if (trendPct < 0.38) {
       predOU = 'UNDER'; ouConf = 58; state = 'TREND_UNDER';
     } else {
-      predOU = streakOU.type;
-      ouConf = 52; state = 'BALANCED';
+      predOU = streakOU.type; ouConf = 52; state = 'BALANCED';
     }
   }
   result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state, predMs: predMs, trendPct: Math.round(trendPct*100) };
@@ -934,14 +996,22 @@ function startDashboard() {
     h += 'if(pr&&pr.over_under){var ou=pr.over_under;var oc=ou.pred==="OVER"?"#22c55e":"#ef4444";';
     h += 'var bc=ou.pred==="OVER"?"rgba(34,197,94,0.5)":"rgba(239,68,68,0.5)";';
     h += 'var rno=(d.last200&&d.last200.length>0)?(d.last200[0].round+1):"?";';
-    h += 'h+="<div class=\'card\' style=\'border-color:"+bc+"\'><div class=\'title\'>Round "+rno+" - Over / Under Tahmini</div>";';
+    h += 'h+="<div class=\'card\' style=\'border-color:"+bc+"\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Round "+rno+" - Over / Under</span>";';
+    h += 'var ouState=ou.state||"";';
+    h += 'var ouBadgeColor=ouState.indexOf("REVERSAL")>=0?"#ef4444":ouState.indexOf("OVER")>=0?"#22c55e":ouState.indexOf("UNDER")>=0?"#ef4444":ouState.indexOf("MS_SIGNAL")>=0?"#a855f7":ouState.indexOf("ILK")>=0?"#f97316":"#5a6180";';
+    h += 'var ouBadgeLabel=ouState.indexOf("REVERSAL")>=0?"SERİ KIRILDI":ouState.indexOf("TREND_OVER")>=0?"TREND OVER":ouState.indexOf("TREND_UNDER")>=0?"TREND UNDER":ouState.indexOf("MS_SIGNAL")>=0?"MS SİNYAL":ouState.indexOf("ILK")>=0?"RENK SİNYAL":ouState==="TREND"?"SERİ":"BALANCED";';
+    h += 'h+="<span style=\'font-size:9px;color:"+ouBadgeColor+";font-weight:800;padding:2px 6px;border:1px solid "+ouBadgeColor+";border-radius:4px\'>"+ouBadgeLabel+"</span></div>";';
     h += 'h+="<div class=\'big\' style=\'color:"+oc+"\'>"+ou.pred+"</div><div class=\'conf\'>Guven: %"+ou.conf+"</div>";';
     h += 'if(ou.streak){var sc=ou.streak.count>=7?"#ef4444":ou.streak.count>=5?"#f97316":ou.streak.count>=3?"#facc15":"#aab0c4";';
     h += 'var sbg=ou.streak.count>=7?"rgba(239,68,68,0.15)":ou.streak.count>=5?"rgba(249,115,22,0.15)":ou.streak.count>=3?"rgba(250,204,21,0.1)":"rgba(255,255,255,0.05)";';
     h += 'h+="<div class=\'si\' style=\'background:"+sbg+";color:"+sc+";border:1px solid "+sc+"44\'>Mevcut Seri: "+ou.streak.type+" "+ou.streak.count+"x</div>";}';
     h += 'h+="</div>";}else{h+="<div class=\'card\'><div class=\'title\'>Tahmin</div><div style=\'color:#facc15;padding:10px\'>Tahmin hesaplaniyor...</div></div>";}';
     h += 'if(pr&&pr.color){var cl=pr.color;var pc=CH[cl.pred]||"#fff";';
-    h += 'h+="<div class=\'card\' style=\'border-color:"+pc+"66\'><div class=\'title\'>Renk Tahmini</div>";';
+    h += 'h+="<div class=\'card\' style=\'border-color:"+pc+"66\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Renk Tahmini</span>";';
+    h += 'var clState=cl.state||"";';
+    h += 'var clBadgeColor=cl.conf>=60?"#22c55e":cl.conf>=45?"#facc15":"#ef4444";';
+    h += 'var clBadgeLabel=cl.conf>=60?"GÜÇLÜ":cl.conf>=45?"ORTA":"ZAYIF";';
+    h += 'h+="<span style=\'font-size:9px;color:"+clBadgeColor+";font-weight:800;padding:2px 6px;border:1px solid "+clBadgeColor+";border-radius:4px\'>"+clBadgeLabel+"</span></div>";';
     h += 'h+="<div class=\'big\' style=\'color:"+pc+"\'>"+cl.pred+"</div><div class=\'conf\'>Guven: %"+cl.conf+"</div>";';
     h += 'h+="<div style=\'margin-top:12px\'><div class=\'title\'>Son 200 Cekilis Renk Dagilimi</div><div style=\'margin-top:6px\'>";';
     h += '["Sari","Yesil","Mavi","Kirmizi","Kahve","Turuncu","Siyah","Mor"].forEach(function(cn){';
