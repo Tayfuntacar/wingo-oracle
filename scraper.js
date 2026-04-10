@@ -228,7 +228,64 @@ function predict(draws) {
   var ouList     = draws.map(function(d) { return d.over_under; });
   var allNumsArr = draws.map(function(d) { return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
 
-  // ── OVER/UNDER: SERİ BAZLI (4x+ = %100 döner, 931 çekilişte kanıtlandı) ──
+  // ── MS HAVUZU: 1337 çekiliş analizi ──
+  // Her ms grubunun ilk sayı havuzu (test: %14.3 isabet vs rastgele %10.4)
+  var MS_FIRST_POOL = {
+    948:[14,8,5,30,15], 949:[21,19,10,29,48], 950:[6,5,35,29,34],
+    951:[48,19,10,13,40], 952:[20,7,5,21,33], 953:[32,21,2,22,38],
+    954:[38,17,18,40,39], 955:[43,5,1,31,47], 956:[22,48,27,29,39],
+    957:[15,24,8,12,18], 958:[15,27,42,1,38], 959:[29,37,26,18,38],
+    960:[12,42,38,30,10], 961:[48,36,33,44,30], 962:[29,30,23,39,41],
+    963:[17,27,29,37,46], 964:[27,7,21,32,5], 965:[34,29,9,23,35]
+  };
+  // Ms → OU sinyali (güçlü olanlar: ms=957 %77 UNDER, ms=961 %70 OVER)
+  var MS_OU_SIGNAL = {
+    948:'UNDER', 949:'UNDER', 957:'UNDER',
+    950:'OVER', 951:'OVER', 961:'OVER', 962:'OVER', 965:'OVER'
+  };
+
+  // Son çekilişin ms değerini çıkar
+  var lastMs = -1;
+  var predMs = -1;
+  if (draws[0] && draws[0].created_at) {
+    try {
+      var tsStr = draws[0].created_at.toString();
+      var msPart = tsStr.split('.')[1];
+      if (msPart) lastMs = parseInt(msPart.replace('Z','').substring(0,3));
+    } catch(e) {}
+  }
+  // Ms geçiş tablosu: önceki ms → sonraki ms tahmini
+  var msTrans = {};
+  draws.forEach(function(d) {
+    if (!d.created_at) return;
+    try {
+      var msPart = d.created_at.toString().split('.')[1];
+      if (msPart) {
+        var ms = parseInt(msPart.replace('Z','').substring(0,3));
+        if (!msTrans[ms]) msTrans[ms] = {};
+        msTrans[ms][ms] = (msTrans[ms][ms] || 0) + 1; // placeholder
+      }
+    } catch(e) {}
+  });
+  // Gerçek geçiş: draws DESC sırada, [0]=en son
+  for (var msi = 0; msi < draws.length - 1; msi++) {
+    if (!draws[msi].created_at || !draws[msi+1].created_at) continue;
+    try {
+      var msA = parseInt(draws[msi+1].created_at.toString().split('.')[1].replace('Z','').substring(0,3)); // önceki
+      var msB = parseInt(draws[msi].created_at.toString().split('.')[1].replace('Z','').substring(0,3));   // sonraki
+      if (!msTrans[msA]) msTrans[msA] = {};
+      msTrans[msA][msB] = (msTrans[msA][msB] || 0) + 1;
+    } catch(e) {}
+  }
+  // Bir sonraki ms tahmini
+  if (lastMs >= 0 && msTrans[lastMs]) {
+    var bestCnt = 0;
+    Object.keys(msTrans[lastMs]).forEach(function(ms) {
+      if (msTrans[lastMs][ms] > bestCnt) { bestCnt = msTrans[lastMs][ms]; predMs = parseInt(ms); }
+    });
+  }
+
+  // ── OVER/UNDER: SERİ BAZLI + MS SİNYALİ ──
   var streakOU = calcStreakOU(ouList);
   var predOU, ouConf, state = 'BALANCED';
 
@@ -242,17 +299,23 @@ function predict(draws) {
     var ov30 = ouList.slice(0, Math.min(30, n)).filter(function(x) { return x === 'OVER'; }).length;
     predOU = (ov30 / Math.min(30, n)) > 0.58 ? 'UNDER' : (ov30 / Math.min(30, n)) < 0.42 ? 'OVER' : (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
     ouConf = 62; state = 'WARNING';
-  } else if (streakOU.count === 2) {
-    var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x) { return x === 'OVER'; }).length;
-    predOU = ov20 > 13 ? 'UNDER' : ov20 < 7 ? 'OVER' : streakOU.type;
-    ouConf = 55; state = 'BALANCED';
   } else {
-    var hour = new Date().getUTCHours() + 3; if (hour >= 24) hour -= 24;
-    var hourBias = {0:'OVER',1:'UNDER',3:'OVER',5:'UNDER',7:'OVER',9:'UNDER',10:'UNDER',11:'UNDER',16:'OVER',17:'UNDER',18:'UNDER',20:'OVER',21:'UNDER',23:'OVER'};
-    predOU = hourBias[hour] || (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
-    ouConf = 52; state = 'BALANCED';
+    // Seri zayıfsa: Ms OU sinyaline bak
+    if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
+      predOU = MS_OU_SIGNAL[predMs];
+      ouConf = 62; state = 'MS_SIGNAL';
+    } else if (streakOU.count === 2) {
+      var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x) { return x === 'OVER'; }).length;
+      predOU = ov20 > 13 ? 'UNDER' : ov20 < 7 ? 'OVER' : streakOU.type;
+      ouConf = 55; state = 'BALANCED';
+    } else {
+      var hour = new Date().getUTCHours() + 3; if (hour >= 24) hour -= 24;
+      var hourBias = {0:'OVER',1:'UNDER',3:'OVER',5:'UNDER',7:'OVER',9:'UNDER',10:'UNDER',11:'UNDER',16:'OVER',17:'UNDER',18:'UNDER',20:'OVER',21:'UNDER',23:'OVER'};
+      predOU = hourBias[hour] || (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
+      ouConf = 52; state = 'BALANCED';
+    }
   }
-  result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state };
+  result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state, predMs: predMs };
 
   // ── RENK: MARKOV + SOĞUKLUK (son 200 baz) ──
   var colorCounts = {}; ALL_COLORS.forEach(function(c) { colorCounts[c] = 0; });
@@ -290,7 +353,7 @@ function predict(draws) {
   var colorConf = coldColors.length >= 3 ? 68 : coldColors.length === 2 ? 55 : 42;
   result.color = { pred: predColor, conf: colorConf, counts: colorCounts, state: state };
 
-  // ── İLK SAYI: FREKANS + SON GÖRÜLME + MARKOV ──
+  // ── İLK SAYI: FREKANS + SON GÖRÜLME + MARKOV + MS HAVUZU ──
   var firstFreq = {}; for (var i = 1; i <= 48; i++) firstFreq[i] = 0;
   firstNums.forEach(function(num, idx) { firstFreq[num] += Math.exp(-0.03 * idx); });
 
@@ -312,14 +375,23 @@ function predict(draws) {
     } else { nmScore[i] = 0; }
   }
 
+  // Ms ilk sayı havuzu bonusu (test: %14.3 vs rastgele %10.4)
+  var msBonus = {}; for (var i = 1; i <= 48; i++) msBonus[i] = 0;
+  if (predMs >= 0 && MS_FIRST_POOL[predMs]) {
+    MS_FIRST_POOL[predMs].forEach(function(num, rank) {
+      msBonus[num] = (5 - rank) * 8; // 1.sıra=40, 5.sıra=8 puan
+    });
+  }
+
   var rec20 = firstNums.slice(0, Math.min(20, n));
   var maxFq = Math.max.apply(null, Object.keys(firstFreq).map(function(k) { return firstFreq[k]; })) || 1;
   var ns = {};
   for (var i = 1; i <= 48; i++) {
-    ns[i] = firstFreq[i] / maxFq * 100 * 0.30
-           + Math.min(firstLS[i], 30) / 30 * 100 * 0.30
-           + (rec20.indexOf(i) === -1 ? 25 : 0) * 0.25
-           + nmScore[i] * 0.15;
+    ns[i] = firstFreq[i] / maxFq * 100 * 0.25   // frekans
+           + Math.min(firstLS[i], 30) / 30 * 100 * 0.25  // son görülme
+           + (rec20.indexOf(i) === -1 ? 25 : 0) * 0.20   // soğukluk
+           + nmScore[i] * 0.15                            // markov
+           + msBonus[i] * 0.15;                           // ms havuzu bonusu
   }
   var allC = []; for (var i = 1; i <= 48; i++) allC.push(i);
   allC.sort(function(a, b) { return ns[b] - ns[a]; });
@@ -328,24 +400,96 @@ function predict(draws) {
   result.first_candidates  = filtC.slice(0, 5).sort(function(a, b) { return a - b; });
   result.first5_candidates = filtC.slice(0, 6).sort(function(a, b) { return a - b; });
 
-
-  // Tekrar oranları: 1130 çekiliş analizi - her sayının bir sonraki çekilişte çıkma olasılığı
+  // ── TEKRAR ORANLARI: 1362 çekiliş analizi ──
   var REPEAT_RATE = {1:0.7358,2:0.7703,3:0.7333,4:0.7162,5:0.7092,6:0.7168,7:0.7476,8:0.7341,9:0.7186,10:0.6950,11:0.7275,12:0.7245,13:0.7127,14:0.7331,15:0.7357,16:0.7072,17:0.7464,18:0.7054,19:0.7360,20:0.7104,21:0.7324,22:0.7400,23:0.7299,24:0.7569,25:0.7583,26:0.7304,27:0.7252,28:0.6969,29:0.7300,30:0.7470,31:0.7027,32:0.7411,33:0.7605,34:0.7024,35:0.7213,36:0.7437,37:0.7159,38:0.7512,39:0.7447,40:0.7250,41:0.7222,42:0.7353,43:0.7244,44:0.7183,45:0.7289,46:0.7387,47:0.7440,48:0.7098};
 
-  // ── KESİN 6: ÖNCEKİ ÇEKİLİŞ TEKRAR ORANI MOTORU ──
-  // Önceki 35 sayıyı tekrar oranına göre sırala, top 6 seç
-  var prevNums = allNumsArr[0] && allNumsArr[0].length > 0 ? allNumsArr[0] : [];
-  var c6Scored = prevNums.slice().sort(function(a, b) { return (REPEAT_RATE[b]||0.72) - (REPEAT_RATE[a]||0.72); });
-  var c6Top = c6Scored.slice(0, 6);
-  var c6TopHalf = c6Scored.slice(0, 3); // erken çıkacaklar (en yüksek tekrar oranlı 3)
-  result.certain6      = c6Top.slice().sort(function(a, b) { return a - b; });
-  result.certain6_grpA = c6TopHalf.slice().sort(function(a, b) { return a - b; });
+  // ── RENK SONRASI İLK SAYI HAVUZU: 1362 çekiliş ──
+  var COLOR_FIRST_POOL = {
+    'Sari':    [19,21,12,15,30],
+    'Yesil':   [6,29,32,12,25],
+    'Mavi':    [39,20,42,35,16],
+    'Kirmizi': [7,2,42,47,30],
+    'Kahve':   [45,25,47,31,21],
+    'Turuncu': [24,13,5,36,43],
+    'Siyah':   [38,31,18,24,22],
+    'Mor':     [27,41,25,43,26]
+  };
 
-  // ── KESİN 8: ÖNCEKİ ÇEKİLİŞ TEKRAR ORANI MOTORU ──
-  // Önceki 35 sayıyı tekrar oranına göre sırala, top 8 seç
-  var c8Scored = prevNums.slice().sort(function(a, b) { return (REPEAT_RATE[b]||0.72) - (REPEAT_RATE[a]||0.72); });
-  result.certain8 = c8Scored.slice(0, 8).sort(function(a, b) { return a - b; });
+  // ── SİNYAL TESPİTİ: 1362 çekiliş analizinden ──
+  var MS_66_SIGNAL = {964:28.0, 949:21.4, 953:19.2, 961:21.7};
+  var MS_88_SIGNAL = {964:14.0, 961:13.0, 949:12.2};
+  var MS_BAD_88    = {948:1, 960:1, 962:1, 965:1};
 
+  // OU son 3 tur sinyali
+  var ou3str = ouList.slice(0,Math.min(3,n)).map(function(x){return x==='OVER'?'O':'U';}).join('');
+  var sig_uou = (ou3str==='UOU');
+  var sig_uuu = (ou3str==='UUU');
+
+  // Önceki renk sinyalleri
+  var prevColor = colorList[0];
+  var sig_siyah_prev   = (prevColor==='Siyah');
+  var sig_turuncu_prev = (prevColor==='Turuncu');
+  var sig_kahve_prev   = (prevColor==='Kahve');
+
+  // Ms değişimi
+  var msDiff2 = (lastMs>=0 && predMs>=0) ? (predMs-lastMs) : 999;
+  var sig_ms_minus1 = (msDiff2===-1);
+
+  // Renk ilk sayı bonusunu ms bonusuna ekle
+  var colorPool = COLOR_FIRST_POOL[prevColor] || [];
+  colorPool.forEach(function(num, rank) {
+    msBonus[num] = (msBonus[num]||0) + (5-rank)*6;
+  });
+
+  // Güçlü sinyal sayısı
+  var strongSig66=0, strongSig88=0;
+  if (predMs>=0 && MS_66_SIGNAL[predMs]) strongSig66++;
+  if (predMs>=0 && MS_88_SIGNAL[predMs]) strongSig88++;
+  if (sig_uou)          { strongSig66++; strongSig88++; }
+  if (sig_uuu)          strongSig88++;
+  if (sig_siyah_prev)   { strongSig66++; strongSig88++; }
+  if (sig_turuncu_prev) strongSig88++;
+  if (sig_kahve_prev)   strongSig66++;
+  if (sig_ms_minus1)    strongSig66++;
+  var badMs88 = (predMs>=0 && MS_BAD_88[predMs]);
+
+  // ── KESİN 6 + KESİN 8: TEKRAR ORANI + SİNYAL ──
+  var prevNums = allNumsArr[0] && allNumsArr[0].length>0 ? allNumsArr[0] : [];
+  var c6Scored = prevNums.slice().sort(function(a,b){return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);});
+
+  var certain6List, certain8List;
+
+  // 2+ güçlü sinyal: son 2 çekilişin kesişimini öne al
+  if (strongSig66>=2 && allNumsArr[1] && allNumsArr[1].length>0) {
+    var p2      = allNumsArr[1];
+    var ov6     = c6Scored.filter(function(x){return p2.indexOf(x)!==-1;});
+    var re6     = c6Scored.filter(function(x){return p2.indexOf(x)===-1;});
+    certain6List = ov6.concat(re6).slice(0,6);
+  } else {
+    certain6List = c6Scored.slice(0,6);
+  }
+
+  if (!badMs88 && strongSig88>=2 && allNumsArr[1] && allNumsArr[1].length>0) {
+    var p2b     = allNumsArr[1];
+    var ov8     = c6Scored.filter(function(x){return p2b.indexOf(x)!==-1;});
+    var re8     = c6Scored.filter(function(x){return p2b.indexOf(x)===-1;});
+    certain8List = ov8.concat(re8).slice(0,8);
+  } else {
+    certain8List = c6Scored.slice(0,8);
+  }
+
+  result.certain6      = certain6List.slice().sort(function(a,b){return a-b;});
+  result.certain6_grpA = certain6List.slice(0,3).sort(function(a,b){return a-b;});
+  result.certain8      = certain8List.slice().sort(function(a,b){return a-b;});
+
+  result.signals = {
+    predMs:predMs, lastMs:lastMs, msDiff:msDiff2,
+    ou3:ou3str, prevColor:prevColor,
+    sig_uou:sig_uou, sig_siyah_prev:sig_siyah_prev,
+    sig_kahve_prev:sig_kahve_prev, sig_turuncu_prev:sig_turuncu_prev,
+    sig_ms_minus1:sig_ms_minus1,
+    strongSig66:strongSig66, strongSig88:strongSig88, badMs88:badMs88
+  };
 
   return result;
 }
@@ -549,9 +693,9 @@ function startDashboard() {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             // Yeşil = ilk 5'te çıktı | Kırmızı/turuncu = 35'te çıktı | Gri = çıkmadı
-            var bg  = inIlk5 ? '#1e6fa8' : inFull ? '#0c2a3a' : '#2a3040';
+            var bg  = inIlk5 ? '#0f4a66' : inFull ? '#0c2a3a' : '#2a3040';
             var brd = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#4a5270';
-            var cl  = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#aab0c4';
+            var cl  = inIlk5 ? '#7dd3fc'  : inFull ? '#38bdf8' : '#aab0c4';
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
