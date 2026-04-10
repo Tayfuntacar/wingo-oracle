@@ -549,6 +549,31 @@ function startDashboard() {
     }).catch(function(e) { res.status(500).json({ error: e.message }); });
   });
 
+  app.get('/predictions.json', function(req, res) {
+    db.query('SELECT p.round, p.pred_ou, p.pred_color, p.pred_first, p.pred_first5, p.pred_certain6, p.pred_certain8, p.actual_first, p.actual_first5, p.actual_color, p.actual_ou, p.ou_hit, p.color_hit, p.first_hit, p.first5_match, p.certain6_match, p.certain8_full_match, p.created_at FROM predictions ORDER BY p.round ASC')
+    .then(function(result) {
+      var data = result.rows.map(function(r, i) {
+        return {
+          seq: i + 1,
+          round: r.round,
+          pred_ou: r.pred_ou, pred_color: r.pred_color,
+          pred_first: r.pred_first, pred_first5: r.pred_first5,
+          pred_certain6: r.pred_certain6, pred_certain8: r.pred_certain8,
+          actual_first: r.actual_first, actual_first5: r.actual_first5,
+          actual_color: r.actual_color, actual_ou: r.actual_ou,
+          ou_hit: r.ou_hit, color_hit: r.color_hit, first_hit: r.first_hit,
+          first5_match: r.first5_match,
+          certain6_match: r.certain6_match,
+          certain8_full_match: r.certain8_full_match,
+          ts: r.created_at
+        };
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="predictions.json"');
+      res.json(data);
+    }).catch(function(e) { res.status(500).json({ error: e.message }); });
+  });
+
   app.get('/rapor', function(req, res) {
     db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 1000').then(function(result) {
       var rows = result.rows;
