@@ -285,9 +285,18 @@ function predict(draws) {
     });
   }
 
-  // ── OVER/UNDER: SERİ BAZLI + MS SİNYALİ ──
+  // ── OVER/UNDER: SERİ BAZLI + DÖNEM EĞİLİMİ + MS SİNYALİ ──
   var streakOU = calcStreakOU(ouList);
   var predOU, ouConf, state = 'BALANCED';
+
+  // Son 10 ve 20 çekilişin OVER oranı (dönem eğilimi)
+  var ov10 = ouList.slice(0, Math.min(10, n)).filter(function(x) { return x === 'OVER'; }).length;
+  var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x) { return x === 'OVER'; }).length;
+  var pct10 = ov10 / Math.min(10, n); // son 10'daki OVER oranı
+  var pct20 = ov20 / Math.min(20, n); // son 20'deki OVER oranı
+  // Dönem eğilimi: son 10 ağırlıklı
+  var trendPct = pct10 * 0.6 + pct20 * 0.4;
+  // trendPct < 0.42 → UNDER dönemi, > 0.58 → OVER dönemi
 
   if (streakOU.count >= 7) {
     predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 92; state = 'REVERSAL';
@@ -296,26 +305,36 @@ function predict(draws) {
   } else if (streakOU.count === 4) {
     predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 78; state = 'REVERSAL';
   } else if (streakOU.count === 3) {
-    var ov30 = ouList.slice(0, Math.min(30, n)).filter(function(x) { return x === 'OVER'; }).length;
-    predOU = (ov30 / Math.min(30, n)) > 0.58 ? 'UNDER' : (ov30 / Math.min(30, n)) < 0.42 ? 'OVER' : (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
+    // 3x seride dönem eğilimi de dikkate al
+    if (trendPct > 0.60) predOU = 'UNDER';
+    else if (trendPct < 0.40) predOU = 'OVER';
+    else predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER';
     ouConf = 62; state = 'WARNING';
   } else {
-    // Seri zayıfsa: Ms OU sinyaline bak
-    if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
+    // 1-2x seri: dönem eğilimini esas al
+    if (trendPct < 0.38) {
+      // Güçlü UNDER dönemi
+      predOU = 'UNDER'; ouConf = 65; state = 'TREND_UNDER';
+    } else if (trendPct > 0.62) {
+      // Güçlü OVER dönemi
+      predOU = 'OVER'; ouConf = 65; state = 'TREND_OVER';
+    } else if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
+      // Dönem nötr → ms sinyali
       predOU = MS_OU_SIGNAL[predMs];
-      ouConf = 62; state = 'MS_SIGNAL';
-    } else if (streakOU.count === 2) {
-      var ov20 = ouList.slice(0, Math.min(20, n)).filter(function(x) { return x === 'OVER'; }).length;
-      predOU = ov20 > 13 ? 'UNDER' : ov20 < 7 ? 'OVER' : streakOU.type;
-      ouConf = 55; state = 'BALANCED';
+      ouConf = 60; state = 'MS_SIGNAL';
+    } else if (trendPct < 0.45) {
+      // Hafif UNDER eğilimi
+      predOU = 'UNDER'; ouConf = 55; state = 'SLIGHT_UNDER';
+    } else if (trendPct > 0.55) {
+      // Hafif OVER eğilimi
+      predOU = 'OVER'; ouConf = 55; state = 'SLIGHT_OVER';
     } else {
-      var hour = new Date().getUTCHours() + 3; if (hour >= 24) hour -= 24;
-      var hourBias = {0:'OVER',1:'UNDER',3:'OVER',5:'UNDER',7:'OVER',9:'UNDER',10:'UNDER',11:'UNDER',16:'OVER',17:'UNDER',18:'UNDER',20:'OVER',21:'UNDER',23:'OVER'};
-      predOU = hourBias[hour] || (streakOU.type === 'OVER' ? 'UNDER' : 'OVER');
+      // Tam denge: son serinin tersine git
+      predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER';
       ouConf = 52; state = 'BALANCED';
     }
   }
-  result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state, predMs: predMs };
+  result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state, predMs: predMs, trendPct: Math.round(trendPct*100) };
 
   // ── RENK: MARKOV + SOĞUKLUK (son 200 baz) ──
   var colorCounts = {}; ALL_COLORS.forEach(function(c) { colorCounts[c] = 0; });
@@ -600,6 +619,13 @@ function startDashboard() {
       h += '<div class="sr"><div class="sl">Kesin 6 (6/6 tuttu)</div><div class="srr">';
       h += '<div class="sp" style="color:' + c6pc + '">%' + c6ppct + '</div><div class="ss">' + c6perfect + '/' + c6T + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
+      // Kesin 8 (8/8 tuttu)
+      var c8perfect = c8fDist[8] || 0;
+      var c8ppct = c8FT > 0 ? Math.round(c8perfect / c8FT * 100) : 0;
+      var c8ppc = c8ppct >= 10 ? '#22c55e' : c8ppct >= 5 ? '#facc15' : '#ef4444';
+      h += '<div class="sr"><div class="sl">Kesin 8 (8/8 tuttu)</div><div class="srr">';
+      h += '<div class="sp" style="color:' + c8ppc + '">%' + c8ppct + '</div><div class="ss">' + c8perfect + '/' + c8FT + ' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:' + Math.min(c8ppct * 4, 100) + '%;background:' + c8ppc + '"></div></div></div></div>';
       h += '<div class="ar"><div class="sl">Kesin 6 \u2192 35 sayida kac tuttu (ort.)</div>';
       h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c6avg + ' / 6</div></div>';
       h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 6 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
@@ -651,6 +677,20 @@ function startDashboard() {
         h += '<span style="font-size:13px;font-weight:800">1.S: <span style="font-size:15px;font-weight:900">' + (r.actual_first || '?') + '</span> ';
         h += renkBadge(r.actual_color, colorHitR) + ' ';
         h += '<span class="' + (ouHitR ? 'hit' : 'miss') + '">' + (r.actual_ou || '?') + (ouHitR ? ' \u2713' : ' \u2717') + '</span></span></div>';
+
+        // OU tahmini
+        if (r.pred_ou) {
+          var ouColor = r.pred_ou === 'OVER' ? '#22c55e' : '#ef4444';
+          h += '<div class="lbl">OVER/UNDER TAHMIN\u0130</div><div style="margin-bottom:6px">';
+          h += '<span style="font-weight:800;color:' + ouColor + '">' + r.pred_ou + '</span>';
+          if (ouHitR) {
+            h += ' <span style="color:#22c55e;font-size:12px;font-weight:800">\u2713 TUTTU</span>';
+          } else {
+            h += ' <span style="color:#ef4444;font-size:12px;font-weight:800">\u2717 KACTI</span>';
+            h += ' <span style="font-size:11px;color:#5a6180">(Gercek: <span style="color:' + (r.actual_ou==='OVER'?'#22c55e':'#ef4444') + ';font-weight:700">' + (r.actual_ou||'?') + '</span>)</span>';
+          }
+          h += '</div>';
+        }
 
         // Renk tahmini
         if (r.pred_color) {
