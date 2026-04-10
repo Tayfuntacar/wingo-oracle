@@ -154,7 +154,7 @@ function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
 }
 
 function updatePredictions(round, first, first5, allNums, ou, renk) {
-  db.query('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6 FROM predictions WHERE round = $1', [round])
+  db.query('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7 FROM predictions WHERE round = $1', [round])
   .then(function(res) {
     if (res.rows.length === 0) { console.log('Round ' + round + ' icin bekleyen tahmin yok.'); return; }
     res.rows.forEach(function(row) {
@@ -171,9 +171,11 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
       var c8Match     = first5.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
       var c8FullMatch = allNums.filter(function(n) { return pc8.indexOf(n) !== -1; }).length;
       var c6Match     = pc6.length > 0 ? allNums.filter(function(n) { return pc6.indexOf(n) !== -1; }).length : -1;
+      var pc7         = row.pred_certain7 ? row.pred_certain7.split(',').map(Number) : [];
+      var c7Match     = pc7.length > 0 ? allNums.filter(function(n) { return pc7.indexOf(n) !== -1; }).length : -1;
       db.query(
-        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13 WHERE id=$14',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, row.id]
+        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14 WHERE id=$15',
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, row.id]
       ).then(function() {
         console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6:' + c6Match + '/6 | C8:' + c8FullMatch + '/8');
       }).catch(function(e) { console.log('Update hatasi:', e.message); });
@@ -193,14 +195,15 @@ function saveNextPrediction(round, callback) {
     var nextRound = round + 1;
     console.log('--- TAHMIN: Round ' + nextRound + ' -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     db.query(
-      'INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (round) DO UPDATE SET pred_ou=$2,pred_color=$3,pred_first=$4,pred_first5=$5,pred_certain8=$6,pred_certain6=$7 WHERE predictions.ou_hit=-1',
+      'INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (round) DO UPDATE SET pred_ou=$2,pred_color=$3,pred_first=$4,pred_first5=$5,pred_certain8=$6,pred_certain6=$7,pred_certain7=$8 WHERE predictions.ou_hit=-1',
       [nextRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
        pred.first_candidates  ? pred.first_candidates.join(',')  : '',
        pred.first5_candidates ? pred.first5_candidates.join(',') : '',
        pred.certain8          ? pred.certain8.join(',')          : '',
-       pred.certain6          ? pred.certain6.join(',')          : '']
+       pred.certain6          ? pred.certain6.join(',')          : '',
+       pred.certain7          ? pred.certain7.join(',')          : '']
     ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound); if (callback) callback(); })
      .catch(function(e) { console.log('SavePred hatasi:', e.message); if (callback) callback(); });
   }).catch(function(e) { console.log('SaveNextPred hatasi:', e.message); });
@@ -305,32 +308,20 @@ function predict(draws) {
   } else if (streakOU.count === 4) {
     predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 78; state = 'REVERSAL';
   } else if (streakOU.count === 3) {
-    // 3x seride dönem eğilimi de dikkate al
-    if (trendPct > 0.60) predOU = 'UNDER';
-    else if (trendPct < 0.40) predOU = 'OVER';
-    else predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER';
-    ouConf = 62; state = 'WARNING';
+    // 3x seri → seriyle devam et (tersine gidince hata oluyor)
+    predOU = streakOU.type;
+    ouConf = 55; state = 'TREND';
   } else {
-    // 1-2x seri: dönem eğilimini esas al
-    if (trendPct < 0.38) {
-      // Güçlü UNDER dönemi
-      predOU = 'UNDER'; ouConf = 65; state = 'TREND_UNDER';
-    } else if (trendPct > 0.62) {
-      // Güçlü OVER dönemi
-      predOU = 'OVER'; ouConf = 65; state = 'TREND_OVER';
-    } else if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
-      // Dönem nötr → ms sinyali
+    // 1-2x seri: ms sinyali varsa kullan, yoksa dönem eğilimi
+    if (predMs >= 0 && MS_OU_SIGNAL[predMs]) {
       predOU = MS_OU_SIGNAL[predMs];
       ouConf = 60; state = 'MS_SIGNAL';
-    } else if (trendPct < 0.45) {
-      // Hafif UNDER eğilimi
-      predOU = 'UNDER'; ouConf = 55; state = 'SLIGHT_UNDER';
-    } else if (trendPct > 0.55) {
-      // Hafif OVER eğilimi
-      predOU = 'OVER'; ouConf = 55; state = 'SLIGHT_OVER';
+    } else if (trendPct > 0.62) {
+      predOU = 'OVER'; ouConf = 58; state = 'TREND_OVER';
+    } else if (trendPct < 0.38) {
+      predOU = 'UNDER'; ouConf = 58; state = 'TREND_UNDER';
     } else {
-      // Tam denge: son serinin tersine git
-      predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER';
+      predOU = streakOU.type;
       ouConf = 52; state = 'BALANCED';
     }
   }
@@ -501,6 +492,15 @@ function predict(draws) {
   result.certain6_grpA = certain6List.slice(0,3).sort(function(a,b){return a-b;});
   result.certain8      = certain8List.slice().sort(function(a,b){return a-b;});
 
+  // ── KESİN 7: TAMAMEN RASTGELE (karşılaştırma için) ──
+  var pool7 = []; for (var ri=1;ri<=48;ri++) pool7.push(ri);
+  var rand7 = [];
+  while(rand7.length < 7) {
+    var idx7 = Math.floor(Math.random() * pool7.length);
+    rand7.push(pool7.splice(idx7,1)[0]);
+  }
+  result.certain7 = rand7.slice().sort(function(a,b){return a-b;});
+
   result.signals = {
     predMs:predMs, lastMs:lastMs, msDiff:msDiff2,
     ou3:ou3str, prevColor:prevColor,
@@ -575,7 +575,7 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    db.query('SELECT p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 1000').then(function(result) {
+    db.query('SELECT p.*,d.all_numbers as actual_all,p.certain7_match FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 ORDER BY p.round DESC LIMIT 1000').then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
       var c6T = 0, c6S = 0, c8FT = 0, c8FS = 0;
@@ -644,6 +644,16 @@ function startDashboard() {
       h += '<div class="sr"><div class="sl">Kesin 6 (6/6 tuttu)</div><div class="srr">';
       h += '<div class="sp" style="color:' + c6pc + '">%' + c6ppct + '</div><div class="ss">' + c6perfect + '/' + c6T + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
+      // Kesin 7 (7/7 tuttu) - Rastgele
+      var c7T = 0, c7S = 0, c7Dist = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0};
+      rows.forEach(function(rr){ var c7m=parseInt(rr.certain7_match); if(c7m>=0){c7T++;c7S+=c7m;c7Dist[Math.min(c7m,7)]=(c7Dist[Math.min(c7m,7)]||0)+1;} });
+      var c7avg = c7T>0?(c7S/c7T).toFixed(2):'0.00';
+      var c7perfect = c7Dist[7]||0;
+      var c7ppct = c7T>0?Math.round(c7perfect/c7T*100):0;
+      h += '<div class="sr"><div class="sl">Kesin 7 (7/7 tuttu) — Rastgele</div><div class="srr">';
+      h += '<div class="sp" style="color:#d4a843">%'+c7ppct+'</div><div class="ss">'+c7perfect+'/'+c7T+' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c7ppct*4,100)+'%;background:#d4a843"></div></div></div></div>';
+
       // Kesin 8 (8/8 tuttu)
       var c8perfect = c8fDist[8] || 0;
       var c8ppct = c8FT > 0 ? Math.round(c8perfect / c8FT * 100) : 0;
@@ -659,6 +669,13 @@ function startDashboard() {
         var _b = _i >= 5 ? '#22c55e44' : _i >= 4 ? '#facc1544' : '#2a2f42';
         h += '<div style="background:#1e2130;border:1px solid ' + _b + ';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">' + _i + '/6: </span><span style="color:' + _c + ';font-weight:800">' + (c6Dist[_i] || 0) + 'x</span></div>';
       }
+      h += '</div></div>';
+
+      // Kesin 7 dagilim
+      h += '<div class="ar"><div class="sl">Kesin 7 \u2192 35 sayida kac tuttu (ort.) \u2014 Rastgele</div>';
+      h += '<div style="font-size:16px;font-weight:900;color:#d4a843">'+c7avg+' / 7</div></div>';
+      h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 7 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for (var _j=0;_j<=7;_j++){var _cj=_j>=6?'#22c55e':_j>=5?'#facc15':'#d4a843';var _bj=_j>=6?'#22c55e44':_j>=5?'#facc1544':'#2a2f42';h+='<div style="background:#1e2130;border:1px solid '+_bj+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_j+'/7: </span><span style="color:'+_cj+';font-weight:800">'+(c7Dist[_j]||0)+'x</span></div>';}
       h += '</div></div>';
 
       // Kesin 8 özet + dağılım
@@ -683,9 +700,11 @@ function startDashboard() {
         var aAll = r.actual_all    ? r.actual_all.split(',').map(Number)    : [];
         var pf1  = r.pred_first    ? r.pred_first.split(',').map(Number).sort(function(a,b){return a-b;})    : [];
         var pc6  = r.pred_certain6 ? r.pred_certain6.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
+        var pc7  = r.pred_certain7 ? r.pred_certain7.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
         var pc8  = r.pred_certain8 ? r.pred_certain8.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
 
         var c6m  = parseInt(r.certain6_match)      >= 0 ? parseInt(r.certain6_match)      : '-';
+        var c7m  = parseInt(r.certain7_match)       >= 0 ? parseInt(r.certain7_match)       : '-';
         var c8fm = parseInt(r.certain8_full_match)  >= 0 ? parseInt(r.certain8_full_match)  : '-';
 
         function renkBadge(renk, hit) {
@@ -771,6 +790,24 @@ function startDashboard() {
           h += '</div>';
         }
 
+        // Kesin 7 - Rastgele
+        if (pc7.length > 0) {
+          h += '<div class="lbl">KESIN 7 SAYI (RASTGELE) — <span style="color:#d4a843;font-weight:900">'+c7m+'/7 tuttu (35 sayida)</span></div>';
+          h += '<div class="nr">';
+          pc7.forEach(function(num) {
+            var inFull = aAll.indexOf(num) !== -1;
+            var bg  = inFull ? '#2a2000' : '#2a3040';
+            var brd = inFull ? '#d4a843' : '#4a5270';
+            var cl  = inFull ? '#d4a843' : '#aab0c4';
+            h += '<div class="nb" style="background:'+bg+';border:1px solid '+brd+';color:'+cl+'">'+num+'</div>';
+          });
+          h += '</div>';
+          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a2000;border:1px solid #d4a843;vertical-align:middle"></span> 35 sayida cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
+          h += '</div>';
+        }
+
         // Kesin 8
         if (pc8.length > 0) {
           h += '<div class="lbl">KESIN CIKACAK 8 SAYI \u2014 <span style="color:#a855f7;font-weight:900">' + c8fm + '/8 tuttu (35 sayida)</span></div>';
@@ -794,6 +831,7 @@ function startDashboard() {
         // Özet
         h += '<div class="mi">';
         h += '<div class="mc">Kesin 6 \u2192 35 sayi: <strong style="color:' + (c6m>=5?'#22c55e':c6m>=4?'#facc15':'#aab0c4') + '">' + c6m + '/6</strong></div>';
+        h += '<div class="mc">Kesin 7 \u2192 35 sayi: <strong style="color:#d4a843">' + c7m + '/7</strong></div>';
         h += '<div class="mc">Kesin 8 \u2192 35 sayi: <strong style="color:' + (c8fm>=6?'#22c55e':c8fm>=4?'#facc15':'#aab0c4') + '">' + c8fm + '/8</strong></div>';
         h += '</div></div>';
       });
@@ -856,6 +894,10 @@ function startDashboard() {
     h += 'pr.certain6.forEach(function(n){var isE=pr.certain6_grpA&&pr.certain6_grpA.indexOf(n)!==-1;';
     h += 'h+="<div class=\'num\' style=\'background:"+("#0c2a3a")+";border:2px solid "+("#38bdf8")+"\'>"+ n+"</div>";});';
     h += 'h+="</div><div style=\'margin-top:8px;font-size:10px;color:#aab0c4;display:flex;gap:12px\'>";';
+    h += 'h+="</div></div>";}';
+    h += 'if(pr&&pr.certain7&&pr.certain7.length>0){';
+    h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 7 Sayi (Rastgele)</div><div class=\'nums\'>";';
+    h += 'pr.certain7.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a2000;border:1px solid #d4a843;color:#d4a843\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
     h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 8 Sayi</div><div class=\'nums\'>";';
