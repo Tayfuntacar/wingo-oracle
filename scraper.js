@@ -415,13 +415,19 @@ function predict(draws) {
 
   var rec20 = firstNums.slice(0, Math.min(20, n));
   var maxFq = Math.max.apply(null, Object.keys(firstFreq).map(function(k) { return firstFreq[k]; })) || 1;
+
+  // İlk sayı renk filtresi: Sarı/Siyah/Yeşil → güvenilir (%58.9/%22.5/%18.5 hit)
+  // Diğer renklerde hit=%0 → ms bonusunu yarıya indir
+  var firstColorReliable = (predColor === 'Sari' || predColor === 'Siyah' || predColor === 'Yesil');
+  var msBonusMultiplier  = firstColorReliable ? 2.0 : 0.5;
+
   var ns = {};
   for (var i = 1; i <= 48; i++) {
-    ns[i] = firstFreq[i] / maxFq * 100 * 0.25   // frekans
-           + Math.min(firstLS[i], 30) / 30 * 100 * 0.25  // son görülme
-           + (rec20.indexOf(i) === -1 ? 25 : 0) * 0.20   // soğukluk
-           + nmScore[i] * 0.15                            // markov
-           + msBonus[i] * 0.15;                           // ms havuzu bonusu
+    ns[i] = firstFreq[i] / maxFq * 100 * 0.25
+           + Math.min(firstLS[i], 30) / 30 * 100 * 0.25
+           + (rec20.indexOf(i) === -1 ? 25 : 0) * 0.20
+           + nmScore[i] * 0.15
+           + msBonus[i] * 0.15 * msBonusMultiplier;
   }
   var allC = []; for (var i = 1; i <= 48; i++) allC.push(i);
   allC.sort(function(a, b) { return ns[b] - ns[a]; });
@@ -429,6 +435,7 @@ function predict(draws) {
   if (filtC.length < 5) filtC = allC;
   result.first_candidates  = filtC.slice(0, 5).sort(function(a, b) { return a - b; });
   result.first5_candidates = filtC.slice(0, 6).sort(function(a, b) { return a - b; });
+  result.firstColorReliable = firstColorReliable; // Sari/Siyah/Yesil renk → ilk sayi guvenirlir
 
   // ── TEKRAR ORANLARI: 1362 çekiliş analizi ──
   var REPEAT_RATE = {1:0.7358,2:0.7703,3:0.7333,4:0.7162,5:0.7092,6:0.7168,7:0.7476,8:0.7341,9:0.7186,10:0.6950,11:0.7275,12:0.7245,13:0.7127,14:0.7331,15:0.7357,16:0.7072,17:0.7464,18:0.7054,19:0.7360,20:0.7104,21:0.7324,22:0.7400,23:0.7299,24:0.7569,25:0.7583,26:0.7304,27:0.7252,28:0.6969,29:0.7300,30:0.7470,31:0.7027,32:0.7411,33:0.7605,34:0.7024,35:0.7213,36:0.7437,37:0.7159,38:0.7512,39:0.7447,40:0.7250,41:0.7222,42:0.7353,43:0.7244,44:0.7183,45:0.7289,46:0.7387,47:0.7440,48:0.7098};
@@ -447,7 +454,7 @@ function predict(draws) {
 
   // ── SİNYAL TESPİTİ: 1362 çekiliş analizinden ──
   var MS_66_SIGNAL = {964:28.0, 949:21.4, 953:19.2, 961:21.7};
-  var MS_88_SIGNAL = {964:14.0, 961:13.0, 949:12.2};
+  var MS_88_SIGNAL = {964:14.0, 961:13.0, 949:10.8, 952:16.2, 953:20.7}; // 952,953 eklendi: 8/8 artirir
   var MS_BAD_88    = {948:1, 960:1, 962:1, 965:1};
 
   // OU son 3 tur sinyali
@@ -943,7 +950,10 @@ function startDashboard() {
     h += 'h+="<span class=\'cb\' style=\'background:"+bg+";opacity:"+op+"\'>"+cn+" "+cnt+"</span>";});';
     h += 'h+="</div></div></div>";}';
     h += 'if(pr&&pr.first_candidates&&pr.first_candidates.length>0){';
-    h += 'h+="<div class=\'card\'><div class=\'title\'>Ilk Sayi - 5 Aday</div><div class=\'nums\'>";';
+    h += 'var fcr=pr.firstColorReliable;';
+    h += 'var fcrColor=fcr?"#22c55e":"#ef4444";';
+    h += 'var fcrLabel=fcr?"GUVENILIR":"ZAYIF";';
+    h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Ilk Sayi - 5 Aday</span><span style=\'font-size:9px;color:"+fcrColor+";font-weight:800;padding:2px 6px;border:1px solid "+fcrColor+";border-radius:4px\'>"+fcrLabel+"</span></div><div class=\'nums\'>";';
     h += 'pr.first_candidates.forEach(function(n){h+="<div class=\'num\' style=\'background:#1e3a5f;border:2px solid #3b82f6\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
