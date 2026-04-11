@@ -231,11 +231,11 @@ function predict(draws) {
   var ouList     = draws.map(function(d) { return d.over_under; });
   var allNumsArr = draws.map(function(d) { return d.all_numbers ? d.all_numbers.split(',').map(Number) : []; });
 
-  // ── MS HAVUZU: DİNAMİK (son 30 çekilişten otomatik hesaplanır) ──
-  // Test: 30 pencere C6/C8 için en iyi sonuç veriyor (1442 çekiliş analizi)
+  // ── MS HAVUZU: DİNAMİK (son 15 çekilişten otomatik hesaplanır) ──
+  // Test: 10-30 arası fark minimal, 15 en hızlı adaptasyon + yeterli örnek
   var msFP = {};   // ms → ilk sayı frekansı
   var msOU = {};   // ms → {OVER: n, UNDER: n}
-  draws.slice(0, Math.min(30, n)).forEach(function(d, di) {
+  draws.slice(0, Math.min(15, n)).forEach(function(d, di) {
     if (!d.created_at) return;
     try {
       var ms2 = parseInt(d.created_at.toString().split('.')[1].replace('Z','').substring(0,3));
@@ -290,8 +290,8 @@ function predict(draws) {
       }
     } catch(e) {}
   });
-  // Gerçek geçiş: draws DESC sırada, [0]=en son — son 30 çekiliş
-  for (var msi = 0; msi < Math.min(draws.length - 1, 30); msi++) {
+  // Gerçek geçiş: draws DESC sırada, [0]=en son — son 15 çekiliş
+  for (var msi = 0; msi < Math.min(draws.length - 1, 15); msi++) {
     if (!draws[msi].created_at || !draws[msi+1].created_at) continue;
     try {
       var msA = parseInt(draws[msi+1].created_at.toString().split('.')[1].replace('Z','').substring(0,3)); // önceki
@@ -772,7 +772,7 @@ function startDashboard() {
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
       // Kesin 7 (7/7 tuttu) - Rastgele
       var c7T = 0, c7S = 0, c7Dist = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0};
-      rows.forEach(function(rr){ var c7m=parseInt(rr.certain7_match); if(c7m>=0){c7T++;c7S+=c7m;c7Dist[Math.min(c7m,7)]=(c7Dist[Math.min(c7m,7)]||0)+1;} });
+      rows.forEach(function(rr){ var c7m=parseInt(rr.certain7_match); if(!isNaN(c7m)&&c7m>=0){c7T++;c7S+=c7m;c7Dist[Math.min(c7m,7)]=(c7Dist[Math.min(c7m,7)]||0)+1;} });
       var c7avg = c7T>0?(c7S/c7T).toFixed(2):'0.00';
       var c7perfect = c7Dist[7]||0;
       var c7ppct = c7T>0?Math.round(c7perfect/c7T*100):0;
@@ -830,7 +830,7 @@ function startDashboard() {
         var pc8  = r.pred_certain8 ? r.pred_certain8.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
 
         var c6m  = parseInt(r.certain6_match)      >= 0 ? parseInt(r.certain6_match)      : '-';
-        var c7m  = parseInt(r.certain7_match)       >= 0 ? parseInt(r.certain7_match)       : '-';
+        var c7m  = r.certain7_match !== null && parseInt(r.certain7_match) >= 0 ? parseInt(r.certain7_match) : '-';
         var c8fm = parseInt(r.certain8_full_match)  >= 0 ? parseInt(r.certain8_full_match)  : '-';
 
         function renkBadge(renk, hit) {
