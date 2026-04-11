@@ -514,10 +514,21 @@ function predict(draws) {
     'Mor':     [27,41,25,43,26]
   };
 
-  // ── SİNYAL TESPİTİ: 1362 çekiliş analizinden ──
-  var MS_66_SIGNAL = {964:28.0, 949:21.4, 953:19.2, 961:21.7};
-  var MS_88_SIGNAL = {964:14.0, 961:13.0, 949:10.8, 952:16.2, 953:20.7}; // 952,953 eklendi: 8/8 artirir
-  var MS_BAD_88    = {948:1, 960:1, 962:1, 965:1};
+  // ── SİNYAL TESPİTİ: 1900 çekiliş analizinden ──
+  // C6 güçlü ms (6/6 oranı %15+)
+  var MS_66_SIGNAL = {964:23.7, 949:18.4, 953:18.6, 961:16.1, 959:15.0};
+  // C8 güçlü ms (8/8 oranı %8+)
+  var MS_88_SIGNAL = {964:11.9, 949:10.5, 952:9.0, 953:8.8, 955:8.3, 961:9.7, 958:11.1};
+  // C8 zayıf ms (8/8 oranı %5 altı)
+  var MS_BAD_88    = {948:1, 950:1, 951:1, 960:1, 962:1, 965:1};
+  // C6 zayıf ms
+  var MS_BAD_66    = {957:1, 960:1, 962:1, 965:1};
+  // C7 güçlü ms (7/7 oranı %13+)
+  var MS_77_SIGNAL = {948:15.4, 955:14.7, 964:13.6, 962:13.0, 961:12.9};
+  // C7 zayıf ms
+  var MS_BAD_77    = {960:1};
+  // Zayıf dönem (C6/C8 performansı genel ortalamanın altı)
+  var MS_WEAK_PERIOD = {951:1, 957:1, 960:1, 962:1, 965:1};
 
   // OU son 3 tur sinyali
   var ou3str = ouList.slice(0,Math.min(3,n)).map(function(x){return x==='OVER'?'O':'U';}).join('');
@@ -526,9 +537,41 @@ function predict(draws) {
 
   // Önceki renk sinyalleri
   var prevColor = colorList[0];
+  var prevColor2 = colorList[1] || '';
   var sig_siyah_prev   = (prevColor==='Siyah');
   var sig_turuncu_prev = (prevColor==='Turuncu');
   var sig_kahve_prev   = (prevColor==='Kahve');
+
+  // Önceki çekilişlerin renk doluluk sayıları (sinyal için)
+  var prevNums0 = allNumsArr[0] || [];
+  var prevNums1 = allNumsArr[1] || [];
+
+  function cntColor(numsArr, color) {
+    if (!COLOR_NUMS_7 || !COLOR_NUMS_7[color]) return 0;
+    return numsArr.filter(function(x){ return COLOR_NUMS_7[color].indexOf(x) !== -1; }).length;
+  }
+
+  var cnt0 = prevColor  ? cntColor(prevNums0, prevColor)  : -1;
+  var cnt1 = prevColor2 ? cntColor(prevNums1, prevColor2) : -1;
+
+  // C6 renk sinyalleri (önceki renk full/zayıf)
+  var sig_c6_strong = (prevColor==='Siyah' || prevColor==='Kahve');  // 6/6 +%3-4
+  var sig_c6_weak   = (cnt0===6 && prevColor==='Kirmizi');            // 6/6 -%4
+
+  // C8 renk sinyalleri
+  var sig_c8_strong = (cnt0===6 && (prevColor==='Siyah' || prevColor==='Turuncu')); // 8/8 +%4-4
+  var sig_c8_weak   = (cnt0===6 && (prevColor==='Kirmizi' || prevColor==='Mor'));   // 8/8 -%3-4
+
+  // C7 renk sinyalleri
+  var sig_c7_strong = (
+    (cnt0===6 && (prevColor==='Kahve' || prevColor==='Yesil' || prevColor==='Turuncu')) ||
+    (cnt0===3 && prevColor==='Yesil') ||
+    (cnt0===3 && prevColor==='Mor')
+  );
+  var sig_c7_weak = (
+    (cnt0===6 && prevColor==='Kirmizi') ||
+    (cnt0===3 && (prevColor==='Sari' || prevColor==='Siyah' || prevColor==='Turuncu'))
+  );
 
   // Ms değişimi
   var msDiff2 = (lastMs>=0 && predMs>=0) ? (predMs-lastMs) : 999;
@@ -540,7 +583,7 @@ function predict(draws) {
     msBonus[num] = (msBonus[num]||0) + (5-rank)*6;
   });
 
-  // Güçlü sinyal sayısı
+  // Güçlü sinyal sayısı - C6/C8
   var strongSig66=0, strongSig88=0;
   if (predMs>=0 && MS_66_SIGNAL[predMs]) strongSig66++;
   if (predMs>=0 && MS_88_SIGNAL[predMs]) strongSig88++;
@@ -550,7 +593,17 @@ function predict(draws) {
   if (sig_turuncu_prev) strongSig88++;
   if (sig_kahve_prev)   strongSig66++;
   if (sig_ms_minus1)    strongSig66++;
-  var badMs88 = (predMs>=0 && MS_BAD_88[predMs]);
+  if (sig_c6_strong)    strongSig66++;
+  if (sig_c8_strong)    strongSig88++;
+
+  var badMs88 = (predMs>=0 && MS_BAD_88[predMs]) || sig_c8_weak;
+  var badMs66 = (predMs>=0 && MS_BAD_66[predMs]) || sig_c6_weak;
+  var weakPeriod = (predMs>=0 && MS_WEAK_PERIOD[predMs]);
+
+  // C7 sinyal durumu
+  var sig77 = (predMs>=0 && MS_77_SIGNAL[predMs]) ? 1 : 0;
+  if (sig_c7_strong) sig77++;
+  var badMs77 = (predMs>=0 && MS_BAD_77[predMs]) || sig_c7_weak;
 
   // ── KESİN 6 + KESİN 8: TEKRAR ORANI + SİNYAL ──
   var prevNums = allNumsArr[0] && allNumsArr[0].length>0 ? allNumsArr[0] : [];
@@ -627,13 +680,27 @@ function predict(draws) {
 
   result.certain7 = sorted7.slice(0,7).sort(function(a,b){return a-b;});
 
+  // ── TÜM SİNYAL BİLGİLERİ ──
   result.signals = {
-    predMs:predMs, lastMs:lastMs, msDiff:msDiff2,
-    ou3:ou3str, prevColor:prevColor,
-    sig_uou:sig_uou, sig_siyah_prev:sig_siyah_prev,
-    sig_kahve_prev:sig_kahve_prev, sig_turuncu_prev:sig_turuncu_prev,
-    sig_ms_minus1:sig_ms_minus1,
-    strongSig66:strongSig66, strongSig88:strongSig88, badMs88:badMs88
+    predMs: predMs, lastMs: lastMs, msDiff: msDiff2,
+    ou3: ou3str, prevColor: prevColor,
+    weakPeriod: weakPeriod,
+    // C6 sinyalleri
+    sig66: strongSig66, badMs66: badMs66,
+    c6strong: sig_c6_strong, c6weak: sig_c6_weak,
+    // C8 sinyalleri
+    sig88: strongSig88, badMs88: badMs88,
+    c8strong: sig_c8_strong, c8weak: sig_c8_weak,
+    // C7 sinyalleri
+    sig77: sig77, badMs77: badMs77,
+    c7strong: sig_c7_strong, c7weak: sig_c7_weak,
+    // OU sinyalleri
+    sig_uou: sig_uou, sig_uuu: sig_uuu,
+    sig_siyah_prev: sig_siyah_prev,
+    sig_kahve_prev: sig_kahve_prev,
+    sig_turuncu_prev: sig_turuncu_prev,
+    sig_ms_minus1: sig_ms_minus1,
+    strongSig66: strongSig66, strongSig88: strongSig88
   };
 
   return result;
@@ -1027,17 +1094,26 @@ function startDashboard() {
     h += 'pr.first_candidates.forEach(function(n){h+="<div class=\'num\' style=\'background:#1e3a5f;border:2px solid #3b82f6\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
-    h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 6 Sayi</div><div class=\'nums\'>";';
+    h += 'var sig=pr.signals||{};';
+    h += 'var c6b=sig.badMs66?"#ef4444":(sig.sig66>=2||sig.c6strong)?"#22c55e":sig.sig66>=1?"#facc15":"#5a6180";';
+    h += 'var c6l=sig.badMs66?"ZAYIF":sig.sig66>=2?"COK GUCLU":sig.sig66>=1||sig.c6strong?"GUCLU":"NORMAL";';
+    h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 6 Sayi</span><span style=\'font-size:9px;color:"+c6b+";font-weight:800;padding:2px 6px;border:1px solid "+c6b+";border-radius:4px\'>"+c6l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain6.forEach(function(n){var isE=pr.certain6_grpA&&pr.certain6_grpA.indexOf(n)!==-1;';
     h += 'h+="<div class=\'num\' style=\'background:"+("#0c2a3a")+";border:2px solid "+("#38bdf8")+"\'>"+ n+"</div>";});';
     h += 'h+="</div><div style=\'margin-top:8px;font-size:10px;color:#aab0c4;display:flex;gap:12px\'>";';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain7&&pr.certain7.length>0){';
-    h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 7 Sayi (Rastgele)</div><div class=\'nums\'>";';
+    h += 'var sig7=pr.signals||{};';
+    h += 'var c7b=(sig7.badMs77||sig7.c7weak)?"#ef4444":(sig7.sig77>=2||sig7.c7strong)?"#22c55e":sig7.sig77>=1?"#facc15":"#5a6180";';
+    h += 'var c7l=(sig7.badMs77||sig7.c7weak)?"ZAYIF":sig7.sig77>=2?"COK GUCLU":sig7.sig77>=1||sig7.c7strong?"GUCLU":"NORMAL";';
+    h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 7 Sayi</span><span style=\'font-size:9px;color:"+c7b+";font-weight:800;padding:2px 6px;border:1px solid "+c7b+";border-radius:4px\'>"+c7l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain7.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a2000;border:1px solid #d4a843;color:#d4a843\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
-    h += 'h+="<div class=\'card\'><div class=\'title\'>Kesin Cikacak - 8 Sayi</div><div class=\'nums\'>";';
+    h += 'var sig8=pr.signals||{};';
+    h += 'var c8b=(sig8.badMs88||sig8.weakPeriod)?"#ef4444":(sig8.sig88>=2||sig8.c8strong)?"#22c55e":sig8.sig88>=1?"#facc15":"#5a6180";';
+    h += 'var c8l=sig8.weakPeriod?"ZAYIF DONEM":sig8.badMs88?"ZAYIF":sig8.sig88>=2?"COK GUCLU":sig8.sig88>=1||sig8.c8strong?"GUCLU":"NORMAL";';
+    h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 8 Sayi</span><span style=\'font-size:9px;color:"+c8b+";font-weight:800;padding:2px 6px;border:1px solid "+c8b+";border-radius:4px\'>"+c8l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(d.stats){h+="<div class=\'card\'><div class=\'title\'>Istatistik ("+d.stats.total+" Round)</div>";';
