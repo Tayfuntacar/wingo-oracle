@@ -217,7 +217,7 @@ function saveNextPrediction(round, callback) {
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
        pred.first_candidates  ? pred.first_candidates.join(',')  : '',
-       pred.first5_candidates ? pred.first5_candidates.join(',') : '',
+       pred.first_candidates  ? pred.first_candidates.join(',')  : '',
        pred.certain8          ? pred.certain8.join(',')          : '',
        pred.certain6          ? pred.certain6.join(',')          : '',
        pred.certain7          ? pred.certain7.join(',')          : '']
@@ -592,9 +592,9 @@ function predict(draws) {
   allC.sort(function(a, b) { return ns[b] - ns[a]; });
   var filtC = allC.filter(function(x) { return predOU === 'OVER' ? x > 24 : x <= 24; });
   if (filtC.length < 5) filtC = allC;
-  result.first_candidates  = filtC.slice(0, 5).sort(function(a, b) { return a - b; });
-  result.first5_candidates = filtC.slice(0, 6).sort(function(a, b) { return a - b; });
-  result.firstColorReliable = firstColorReliable; // Sari/Siyah/Yesil renk → ilk sayi guvenirlir
+  result.first_candidates  = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
+  result.first5_candidates = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
+  result.firstColorReliable = firstColorReliable;
 
   // ── SICAK SAYI BONUSU (son 3 turda 3+ kez → %98 sonraki 3 turda gelir) ──
   var hotNums = {};
@@ -1061,12 +1061,22 @@ function predict(draws) {
     certain6List.push(certain8List[c6j]);
   }
 
-  // C6 seçim önceliği: Renk+OU > Önceki renk > Şimdiki renk > Havuz
+  // C6: Sadece First8 havuzundan 6 sayı (premium havuz)
+  // Renk+OU sinyali varsa o grubu kullan, yoksa First8'den tekrar oranına göre top 6
   var specialC6 = RENK_OU_C6[renkOuKey] || PREV_RENK_C6[prevColor||''] || RENK_C6[predColor] || null;
   if (specialC6 && specialC6.length >= 6) {
     result.certain6 = specialC6.slice(0,6).sort(function(a,b){return a-b;});
   } else {
-    result.certain6 = certain6List.slice().sort(function(a,b){return a-b;});
+    var firstCands = result.first_candidates || [];
+    var firstSorted = firstCands.slice().sort(function(a,b){
+      return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
+    });
+    // First8'den top 6 al, eksikse C8'den tamamla
+    var c6fromFirst = firstSorted.slice(0,6);
+    for (var fi=0; c6fromFirst.length<6 && fi<certain6List.length; fi++) {
+      if (c6fromFirst.indexOf(certain6List[fi]) === -1) c6fromFirst.push(certain6List[fi]);
+    }
+    result.certain6 = c6fromFirst.sort(function(a,b){return a-b;});
   }
   result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
 
@@ -1228,7 +1238,7 @@ function startDashboard() {
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(colorPct * 4, 100) + '%;background:' + cc + '"></div></div></div></div>';
 
       var fc = firstPct >= 15 ? '#22c55e' : firstPct >= 10 ? '#facc15' : '#ef4444';
-      h += '<div class="sr"><div class="sl">Ilk Sayi (5 Aday)</div><div class="srr">';
+      h += '<div class="sr"><div class="sl">Ilk Sayi (8 Aday)</div><div class="srr">';
       h += '<div class="sp" style="color:' + fc + '">%' + firstPct + '</div><div class="ss">' + firstHit + '/' + firstTotal + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(firstPct * 4, 100) + '%;background:' + fc + '"></div></div></div></div>';
 
@@ -1506,7 +1516,7 @@ function startDashboard() {
     h += 'var fcr=pr.firstColorReliable;';
     h += 'var fcrColor=fcr?"#22c55e":"#ef4444";';
     h += 'var fcrLabel=fcr?"GUVENILIR":"ZAYIF";';
-    h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Ilk Sayi - 5 Aday</span><span style=\'font-size:9px;color:"+fcrColor+";font-weight:800;padding:2px 6px;border:1px solid "+fcrColor+";border-radius:4px\'>"+fcrLabel+"</span></div><div class=\'nums\'>";';
+    h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Ilk Sayi - 8 Aday</span><span style=\'font-size:9px;color:"+fcrColor+";font-weight:800;padding:2px 6px;border:1px solid "+fcrColor+";border-radius:4px\'>"+fcrLabel+"</span></div><div class=\'nums\'>";';
     h += 'pr.first_candidates.forEach(function(n){h+="<div class=\'num\' style=\'background:#1e3a5f;border:2px solid #3b82f6\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
