@@ -786,28 +786,37 @@ function predict(draws) {
   var badMs77 = (predMs>=0 && MS_BAD_77[predMs]) || sig_c7_weak;
 
   // ── RENK+OU ÖZEL GRUPLARI (doğrulanmış %17-20 6/6) ──
-  // Renk+OU özel C6 grupları (2414 çekiliş doğrulanmış)
+  // ── RENK+OU ÖZEL C6 GRUPLARI (750 tahmin + 2414 çekiliş doğrulanmış) ──
   var RENK_OU_C6 = {
-    'Mor_UNDER':     [24,16,8,23,26,15],   // %20.3 6/6
-    'Siyah_OVER':    [47,39,31,23,15,40],  // %17.8 6/6
-    'Turuncu_UNDER': [6,22,14,42,10,16],   // %19.5 6/6
-    'Mavi_OVER':     [27,43,36,35,47,48],  // %25.0 6/6 EN YÜKSEK
+    'Siyah_UNDER':   [23,40,39,11,38,47],  // %22.2 6/6 ★ EN İYİ
+    'Mor_UNDER':     [12,27,35,36,48,43],  // %19.6 6/6
+    'Turuncu_UNDER': [34,42,14,11,10,15],  // %16.3 6/6
+    'Mavi_OVER':     [1,17,9,8,43,16],     // %17.3 6/6
     'Sari_UNDER':    [9,17,8,1,2,43],      // %19.9 6/6
     'Kahve_UNDER':   [2,5,22,39,46,47],    // %16.7 6/6
   };
-  // Renk bazlı C6 grupları (renk+OU yoksa kullan)
+  // Önceki renk bazlı C6 (renk+OU yoksa)
+  var PREV_RENK_C6 = {
+    'Siyah':   [18,3,9,5,33,22],    // %19.5 6/6
+    'Kirmizi': [14,31,34,5,13,40],  // %18.4 6/6
+    'Mavi':    [40,41,10,13,6,34],  // %17.5 6/6
+    'Sari':    [46,27,35,36,43,48], // %16.3 6/6
+    'Turuncu': [26,6,16,22,12,5],   // %14.0 6/6
+    'Mor':     [31,40,23,8,24,15],  // %13.9 6/6
+  };
+  // Renk bazlı C6 (şimdiki renk, fallback)
   var RENK_C6 = {
-    'Siyah':   [11,15,23,39,46,47],   // %20.2 6/6
-    'Turuncu': [2,11,30,38,39,47],    // %19.6 6/6
-    'Yesil':   [11,15,34,39,42,47],   // %14.9 6/6
-    'Mor':     [6,39,40,41,46,47],    // %10.4 6/6
+    'Siyah':   [11,15,23,39,46,47],
+    'Turuncu': [2,11,30,38,39,47],
+    'Yesil':   [11,15,34,39,42,47],
+    'Mor':     [6,39,40,41,46,47],
   };
   // Renk+OU C7 grupları
   var RENK_OU_C7 = {
-    'Mor_UNDER':     [24,16,8,23,26,15,6],
-    'Siyah_OVER':    [47,39,31,23,15,40,11],
-    'Turuncu_UNDER': [6,22,14,42,10,16,30],
-    'Mavi_OVER':     [27,43,36,35,47,48,3],
+    'Siyah_UNDER':   [23,40,39,11,38,47,15],
+    'Mor_UNDER':     [12,27,35,36,48,43,24],
+    'Turuncu_UNDER': [34,42,14,11,10,15,6],
+    'Mavi_OVER':     [1,17,9,8,43,16,27],
     'Sari_UNDER':    [9,17,8,1,2,43,25],
     'Kahve_UNDER':   [2,5,22,39,46,47,13],
   };
@@ -894,6 +903,7 @@ function predict(draws) {
   // C7 seçim önceliği: Renk çifti > Renk+OU > Mevcut motor
   var pairC7Key = (prevColor||'') + '_' + (predColor||'');
   var specialC7 = PAIR_C7[pairC7Key] || RENK_OU_C7[renkOuKey] || null;
+  // OVER+Siyah C7 grubunu kaldır — gerçek veri düşük (%4.8)
   if (specialC7 && specialC7.length >= 7) {
     result.certain7 = specialC7.slice(0,7).sort(function(a,b){return a-b;});
   } else {
@@ -915,8 +925,8 @@ function predict(draws) {
   for (var c6j=3; certain6List.length<6 && c6j<certain8List.length; c6j++) {
     certain6List.push(certain8List[c6j]);
   }
-  // C6 seçim önceliği: Renk+OU > Renk bazlı > Tekrar oranı
-  var specialC6 = RENK_OU_C6[renkOuKey] || RENK_C6[predColor] || null;
+  // C6 seçim önceliği: Renk+OU > Önceki renk > Şimdiki renk > Tekrar oranı
+  var specialC6 = RENK_OU_C6[renkOuKey] || PREV_RENK_C6[prevColor||''] || RENK_C6[predColor] || null;
   if (specialC6 && specialC6.length >= 6) {
     result.certain6 = specialC6.slice(0,6).sort(function(a,b){return a-b;});
   } else {
