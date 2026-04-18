@@ -835,8 +835,90 @@ function predict(draws) {
   var prevNums = allNumsArr[0] && allNumsArr[0].length>0 ? allNumsArr[0] : [];
   var c6Scored = prevNums.slice().sort(function(a,b){return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);});
 
-  // C8: tekrar oranı en yüksek 8 sayı
-  var certain8List = c6Scored.slice(0,8);
+  // ── MS BAZLI OPTİMAL C8 GRUPLARI (2652 çekiliş analizi) ──
+  var MS_C8 = {
+    951:  [46,28,40,2,47,1,27,11],   // 8/8=%17.3
+    959:  [14,22,2,41,33,34,6,44],   // 8/8=%16.2
+    962:  [11,39,4,8,23,28,1,33],    // 8/8=%20.0
+    964:  [13,48,23,19,40,21,4,47],  // 8/8=%25.0
+    957:  [47,14,25,12,36,39,26,46], // 8/8=%12.8
+    961:  [8,40,24,39,20,28,26,46],  // 8/8=%12.8
+  };
+  // MS+OU bazlı optimal C8
+  var MS_OU_C8 = {
+    '961_OVER':  [8,40,45,43,15,24,3,10],   // 8/8=%45.0
+    '960_UNDER': [47,38,2,5,16,41,24,46],   // 8/8=%35.7
+    '962_OVER':  [43,18,4,23,36,28,46,9],   // 8/8=%31.2
+    '959_UNDER': [22,23,24,35,2,44,18,4],   // 8/8=%27.6
+    '951_OVER':  [8,28,39,10,47,25,40,27],  // 8/8=%25.7
+    '951_UNDER': [46,11,2,3,1,19,40,14],    // 8/8=%25.0
+    '959_OVER':  [14,47,41,2,13,33,22,6],   // 8/8=%15.4
+    '961_UNDER': [20,24,39,38,26,35,2,27],  // 8/8=%15.8
+  };
+  // MS+Renk bazlı optimal C8 (en güçlüler)
+  var MS_RENK_C8 = {
+    '959_Mavi':     [6,35,2,12,13,34,33,44],   // 8/8=%47.4
+    '952_Turuncu':  [15,20,5,24,34,8,30,27],   // 8/8=%40.0
+    '959_Turuncu':  [44,6,12,36,22,42,33,41],  // 8/8=%37.5
+    '958_Sari':     [46,3,29,28,9,12,4,43],    // 8/8=%36.8
+    '958_Yesil':    [5,1,32,21,16,3,19,34],    // 8/8=%35.3
+    '953_Mor':      [43,42,2,17,34,44,13,24],  // 8/8=%34.2
+    '952_Mavi':     [24,12,21,10,47,26,17,30], // 8/8=%33.3
+    '957_Turuncu':  [39,14,12,7,8,29,26,10],   // 8/8=%32.0
+    '952_Kirmizi':  [46,19,24,47,20,9,5,6],    // 8/8=%30.0
+    '957_Sari':     [47,33,41,24,44,12,16,48], // 8/8=%29.6
+    '956_Siyah':    [47,45,11,38,40,46,17,16], // 8/8=%29.0
+    '952_Siyah':    [32,3,14,37,31,9,30,2],    // 8/8=%28.1
+    '957_Kirmizi':  [43,47,3,13,10,4,21,12],   // 8/8=%27.8
+    '954_Mor':      [41,40,8,11,32,26,19,17],  // 8/8=%27.7
+    '957_Siyah':    [39,47,25,44,31,1,15,28],  // 8/8=%27.5
+    '957_Yesil':    [41,9,23,19,42,26,12,47],  // 8/8=%27.3
+    '953_Siyah':    [18,38,5,27,15,23,45,20],  // 8/8=%26.5
+    '955_Turuncu':  [38,48,19,22,1,7,34,2],    // 8/8=%25.4
+    '953_Yesil':    [5,46,14,38,6,2,21,39],    // 8/8=%25.0
+    '952_Sari':     [31,2,17,39,33,48,25,15],  // 8/8=%25.0
+    '956_Sari':     [20,48,9,42,24,46,2,33],   // 8/8=%24.4
+    '956_Yesil':    [43,32,42,10,4,39,6,27],   // 8/8=%24.3
+    '953_Kirmizi':  [43,12,41,23,21,7,42,28],  // 8/8=%24.2
+    '955_Siyah':    [40,23,15,48,47,32,18,3],  // 8/8=%23.3
+    '956_Kahve':    [37,31,22,19,5,10,39,28],  // 8/8=%25.6
+    '954_Mavi':     [31,15,46,19,40,47,4,35],  // 8/8=%21.1
+    '955_Kahve':    [37,29,30,5,2,40,39,45],   // 8/8=%16.4
+    '955_Mavi':     [47,43,40,2,37,5,1,48],    // 8/8=%15.2
+    '954_Sari':     [2,8,23,9,4,38,37,39],     // 8/8=%20.0
+    '954_Siyah':    [11,23,19,7,15,37,28,6],   // 8/8=%19.6
+    '955_Sari':     [11,9,13,41,23,40,19,33],  // 8/8=%18.9
+    '957_Mavi':     [41,27,44,40,25,47,2,1],   // 8/8=%17.6
+    '956_Mor':      [32,9,11,40,48,1,36,45],   // 8/8=%17.6
+    '954_Turuncu':  [33,35,14,34,17,9,5,30],   // 8/8=%16.1
+    '954_Kahve':    [21,8,45,17,12,48,1,29],   // 8/8=%16.1
+    '956_Turuncu':  [8,48,14,38,36,11,35,15],  // 8/8=%16.3
+    '956_Kirmizi':  [3,18,45,8,21,46,41,27],   // 8/8=%21.2
+    '958_Kahve':    [36,22,48,27,5,15,6,13],   // 8/8=%26.1
+    '958_Turuncu':  [46,45,3,14,24,12,6,39],   // 8/8=%20.8
+    '956_Mavi':     [44,19,25,27,15,11,14,4],  // 8/8=%20.8
+    '953_Sari':     [41,16,42,7,40,9,18,37],   // 8/8=%17.8
+    '952_Yesil':    [6,42,30,10,44,22,34,21],  // 8/8=%20.7
+    '955_Kirmizi':  [37,12,45,32,28,16,27,31], // 8/8=%19.6
+    '952_Kahve':    [38,21,18,37,12,22,6,20],  // 8/8=%24.0
+    '952_Mor':      [32,16,9,29,11,27,44,18],  // 8/8=%17.4
+    '958_Mavi':     [23,11,9,43,1,42,22,41],   // 8/8=%27.8
+    '957_Mor':      [46,44,21,6,48,37,31,10],  // 8/8=%21.9
+    '959_Kahve':    [22,14,21,27,45,25,36,33], // 8/8=%21.7
+    '957_Kahve':    [18,27,19,14,23,38,7,37],  // 8/8=%21.7
+  };
+
+  // C8 seçim önceliği: MS+Renk > MS+OU > MS bazlı > tekrar oranı
+  var msRenkC8Key = predMs + '_' + (colorList[0]||'');
+  var msOuC8Key   = predMs + '_' + (ouList[0]||'');
+  var specialC8 = MS_RENK_C8[msRenkC8Key] || MS_OU_C8[msOuC8Key] || MS_C8[predMs] || null;
+
+  var certain8List;
+  if (specialC8 && specialC8.length === 8) {
+    certain8List = specialC8.slice();
+  } else {
+    certain8List = c6Scored.slice(0,8);
+  }
   result.certain8 = certain8List.slice().sort(function(a,b){return a-b;});
 
   // ── KESİN 7: AZ ÇIKAN RENK + MS DIŞI SAYILAR ──
@@ -910,22 +992,19 @@ function predict(draws) {
     result.certain7 = sorted7.slice(0,7).sort(function(a,b){return a-b;});
   }
 
-  // ── KESİN 6: C8'den 3 + C7'den 3 (en iyi 6/6=%14.4, 2414 çekiliş test) ──
+  // ── KESİN 6: C8'den 3 + C7'den 3 (büyük-küçük karışık) ──
   var c8Set = {};
   certain8List.forEach(function(x){ c8Set[x] = 1; });
   var c7Only = result.certain7.filter(function(x){ return !c8Set[x]; });
-  // C8'in ilk 3'ü + C7'nin benzersiz ilk 3'ü
-  var certain6List = certain8List.slice(0,3).concat([]);
-  var added = 0;
-  for (var c6i=0; c6i<c7Only.length && added<3; c6i++) {
-    certain6List.push(c7Only[c6i]);
-    added++;
-  }
-  // Eğer C7'den 3 bulunamadıysa C8'den tamamla
+
+  // C8'den ilk 3 + C7'den ilk 3 (her ikisi kendi motorunun sıralamasına göre)
+  var certain6List = certain8List.slice(0,3).concat(c7Only.slice(0,3));
+  // Eğer C7'den 3 bulunamazsa C8'den tamamla
   for (var c6j=3; certain6List.length<6 && c6j<certain8List.length; c6j++) {
     certain6List.push(certain8List[c6j]);
   }
-  // C6 seçim önceliği: Renk+OU > Önceki renk > Şimdiki renk > Tekrar oranı
+
+  // C6 seçim önceliği: Renk+OU > Önceki renk > Şimdiki renk > Havuz
   var specialC6 = RENK_OU_C6[renkOuKey] || PREV_RENK_C6[prevColor||''] || RENK_C6[predColor] || null;
   if (specialC6 && specialC6.length >= 6) {
     result.certain6 = specialC6.slice(0,6).sort(function(a,b){return a-b;});
