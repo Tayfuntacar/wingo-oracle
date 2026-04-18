@@ -425,6 +425,16 @@ function predict(draws) {
   // Mor sonrası OVER sinyali (%58.4), Mor+UNDER sonrası %60.8
   var sig_mor_over = (prevColor0 === 'Mor');
   var sig_mor_under_over = (prevColor0 === 'Mor' && ouList[0] === 'UNDER');
+
+  // Renk çifti OU sinyalleri (2652 çekiliş)
+  var COLOR_PAIR_OU = {
+    'Yesil_Yesil':  'OVER',   // %70.0 (n=40)
+    'Yesil_Mor':    'OVER',   // %67.4 (n=43)
+    'Mor_Mor':      'OVER',   // %66.7 (n=39)
+    'Turuncu_Yesil':'UNDER',  // %67.3 (n=49)
+  };
+  var colorPairOuKey = (prevColor1||'') + '_' + (prevColor0||'');
+  var colorPairOuSignal = COLOR_PAIR_OU[colorPairOuKey] || null;
   // MS OU sinyali
   var msOUSignal = null;
   if (predMs >= 0 && MS_OU_OVER[predMs])  { msOUSignal = 'OVER';  }
@@ -448,6 +458,8 @@ function predict(draws) {
       predOU = 'OVER'; ouConf = 64; state = 'SIFIR_MOR_OVER';
     } else if (sig_mor_under_over) {
       predOU = 'OVER'; ouConf = 61; state = 'MOR_UNDER_OVER';
+    } else if (colorPairOuSignal) {
+      predOU = colorPairOuSignal; ouConf = 67; state = 'PAIR_OU';
     } else if (sig_mor_over) {
       predOU = 'OVER'; ouConf = 58; state = 'MOR_OVER';
     } else if (colorOUSignal) {
@@ -746,16 +758,41 @@ function predict(draws) {
 
   // ── MS + RENK KOMBİNASYON BONUSU (doğrulanmış %90+) ──
   var MS_RENK_BONUS = {
-    '955_Siyah': [47],        // %91.4
-    '956_Sari':  [20,42],     // %90.0
-    '952_Siyah': [9,23,32],   // %90.3
-    '953_Yesil': [38],        // %91.7
-    '957_Siyah': [32,47],     // %90.3
-    '956_Mor':   [32],        // %90.2
-    '954_Mor':   [26],        // %90.0
-    '956_Yesil': [30],        // %90.0
-    '953_Siyah': [15],        // %91.1
+    '955_Siyah':   [47],      // %91.4
+    '956_Sari':    [20,42],   // %90.0
+    '952_Siyah':   [9,23,32], // %90.3
+    '953_Yesil':   [38],      // %91.7
+    '957_Siyah':   [32,47],   // %90.3
+    '956_Mor':     [32],      // %90.2
+    '954_Mor':     [26],      // %90.0
+    '956_Yesil':   [30],      // %90.0
+    '953_Siyah':   [15],      // %91.1
+    '958_Kahve':   [36],      // %100 (n=23)
+    '957_Sari':    [47],      // %96.3 (n=27)
+    '959_Turuncu': [44],      // %96.0 (n=25)
+    '958_Mavi':    [23],      // %100 (n=18)
+    '958_Kirmizi': [23],      // %95.2 (n=21)
+    '956_Sari':    [9,20,42], // %100 (n=21) - güncellendi
   };
+
+  // MS→MS geçiş bonusu (önceki ms + şimdiki ms → sayı)
+  var MS_MS_BONUS = {
+    '957_955': [37],   // %97.1 (n=34) EN GÜÇLÜ
+    '958_959': [6],    // %100 (n=16)
+    '958_955': [21,48],// %100 (n=16)
+    '954_957': [9],    // %100 (n=17)
+    '959_955': [31],   // %100 (n=14)
+    '959_960': [13],   // %100 (n=12)
+    '956_952': [7],    // %100 (n=14)
+    '953_957': [2],    // %100 (n=15)
+    '951_952': [25],   // %95.2 (n=21)
+    '958_958': [43],   // %95.7 (n=23)
+  };
+  var msMsKey = lastMs + '_' + predMs;
+  var msMsNums = MS_MS_BONUS[msMsKey] || [];
+  msMsNums.forEach(function(num) {
+    msBonus[num] = (msBonus[num]||0) + 45; // Çok güçlü bonus
+  });
   var msRenkKey = predMs + '_' + prevColor0;
   var msRenkNums = MS_RENK_BONUS[msRenkKey] || [];
   msRenkNums.forEach(function(num) {
@@ -908,10 +945,30 @@ function predict(draws) {
     '957_Kahve':    [18,27,19,14,23,38,7,37],  // 8/8=%21.7
   };
 
-  // C8 seçim önceliği: MS+Renk > MS+OU > MS bazlı > tekrar oranı
-  var msRenkC8Key = predMs + '_' + (colorList[0]||'');
-  var msOuC8Key   = predMs + '_' + (ouList[0]||'');
-  var specialC8 = MS_RENK_C8[msRenkC8Key] || MS_OU_C8[msOuC8Key] || MS_C8[predMs] || null;
+  // C8 seçim önceliği: MS+Renk > MS+OU > PrevRenk+MS > MS bazlı > tekrar oranı
+  var msRenkC8Key    = predMs + '_' + (colorList[0]||'');
+  var msOuC8Key      = predMs + '_' + (ouList[0]||'');
+  var prevRenkMsC8Key = (colorList[1]||'') + '_' + predMs;
+
+  // PrevRenk+MS özel grupları
+  var PREV_RENK_MS_C8 = {
+    'Kirmizi_958': [3,46,17,43,6,45,47,38],   // %41.2
+    'Kirmizi_952': [30,26,31,42,20,18,46,1],  // %39.3
+    'Sari_952':    [32,23,14,19,33,17,28,29], // %39.1
+    'Turuncu_957': [2,22,3,14,12,47,19,24],   // %37.5
+    'Kahve_959':   [6,10,2,39,32,14,22,24],   // %36.8
+    'Mor_952':     [36,12,24,42,5,6,32,37],   // %35.3
+    'Kirmizi_959': [11,48,47,35,15,16,7,18],  // %33.3
+    'Siyah_952':   [47,27,21,4,46,17,16,39],  // %31.6
+    'Mor_957':     [44,20,14,37,3,33,8,41],   // %31.2
+    'Mavi_953':    [17,27,46,42,3,37,44,13],  // %31.2
+    'Siyah_958':   [34,35,18,6,24,11,2,46],   // %31.2
+    'Sari_957':    [25,31,26,8,30,39,18,9],   // %28.0
+    'Mavi_959':    [41,26,33,13,11,3,45,17],  // %26.3
+    'Yesil_958':   [23,17,1,41,25,44,42,13],  // %26.1
+  };
+
+  var specialC8 = MS_RENK_C8[msRenkC8Key] || MS_OU_C8[msOuC8Key] || PREV_RENK_MS_C8[prevRenkMsC8Key] || MS_C8[predMs] || null;
 
   var certain8List;
   if (specialC8 && specialC8.length === 8) {
