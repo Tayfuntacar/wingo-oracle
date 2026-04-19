@@ -1551,7 +1551,7 @@ function startDashboard() {
         var jpM2 = parseInt(r.jackpot_match) >= 0 ? parseInt(r.jackpot_match) : '-';
         if (pJp2.length > 0) {
           var jpColor = jpM2 >= 4 ? '#22c55e' : jpM2 >= 3 ? '#facc15' : '#facc15';
-          h += '<div class="lbl">JACKPOT TAHMİNİ (15-19-23-27-35. TOP) \u2014 <span style="color:'+jpColor+';font-weight:900">'+jpM2+'/5 tuttu</span></div>';
+          h += '<div class="lbl">JACKPOT TAHMİNİ \u2014 <span style="color:'+jpColor+';font-weight:900">'+jpM2+'/5 tuttu</span></div>';
           h += '<div class="nr">';
           pJp2.forEach(function(num) {
             var inJp = aJp2.indexOf(num) !== -1;
@@ -1688,7 +1688,7 @@ function startDashboard() {
     h += 'pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.jackpot&&pr.jackpot.length>0){';
-    h += 'h+="<div class=\'card\' style=\'border-color:#facc1566\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Jackpot Tahmini (15-19-23-27-35. Top)</span><span style=\'font-size:9px;color:#facc15;font-weight:800;padding:2px 6px;border:1px solid #facc15;border-radius:4px\'>5 SAYI</span></div><div class=\'nums\'>";';
+    h += 'h+="<div class=\'card\' style=\'border-color:#facc1566\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Jackpot Tahmini</span><span style=\'font-size:9px;color:#facc15;font-weight:800;padding:2px 6px;border:1px solid #facc15;border-radius:4px\'>5 SAYI</span></div><div class=\'nums\'>";';
     h += 'pr.jackpot.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a1f00;border:2px solid #facc15;color:#facc15\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(d.stats){h+="<div class=\'card\'><div class=\'title\'>Istatistik ("+d.stats.total+" Round)</div>";';
