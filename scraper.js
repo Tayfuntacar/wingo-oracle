@@ -63,9 +63,29 @@ db.connect().then(function() {
 }).then(function() {
   return backfillCertain6();
 }).then(function() {
+  return backfillJackpot();
+}).then(function() {
   connect();
   startDashboard();
 }).catch(function(e) { console.log('DB hatasi:', e.message); });
+
+function backfillJackpot() {
+  return dbQuery(
+    "SELECT p.id, p.pred_jackpot, d.all_numbers FROM predictions p LEFT JOIN draws d ON p.round = d.round WHERE p.ou_hit != -1 AND p.pred_jackpot IS NOT NULL AND p.pred_jackpot != '' AND d.all_numbers IS NOT NULL AND (p.jackpot_match IS NULL OR p.jackpot_match = -1)"
+  ).then(function(res) {
+    if (res.rows.length === 0) { console.log('Jackpot backfill: guncellenecek kayit yok.'); return; }
+    console.log('Jackpot backfill: ' + res.rows.length + ' kayit guncelleniyor...');
+    var promises = res.rows.map(function(row) {
+      var pJp = row.pred_jackpot.split(',').map(Number);
+      var allNums = row.all_numbers.split(',').map(Number);
+      var actualJp = [14,18,22,26,34].map(function(pos){ return pos < allNums.length ? allNums[pos] : null; }).filter(function(x){ return x !== null; });
+      var jpMatch = actualJp.filter(function(n){ return pJp.indexOf(n) !== -1; }).length;
+      var actualJpStr = actualJp.join(',');
+      return dbQuery('UPDATE predictions SET actual_jackpot=$1, jackpot_match=$2 WHERE id=$3', [actualJpStr, jpMatch, row.id]);
+    });
+    return Promise.all(promises).then(function() { console.log('Jackpot backfill tamamlandi.'); });
+  }).catch(function(e) { console.log('Jackpot backfill hatasi:', e.message); });
+}
 
 function backfillCertain6() {
   return dbQuery(
@@ -1383,26 +1403,28 @@ function startDashboard() {
       var jpT = 0, jpS = 0, jpDist = {0:0,1:0,2:0,3:0,4:0,5:0};
       rows.forEach(function(rr) {
         var jm = parseInt(rr.jackpot_match);
-        if (!isNaN(jm) && jm >= 0) { jpT++; jpS += jm; jpDist[Math.min(jm,5)] = (jpDist[Math.min(jm,5)]||0)+1; }
+        if (!isNaN(jm) && jm >= 0 && rr.pred_jackpot && rr.pred_jackpot !== '') {
+          jpT++; jpS += jm; jpDist[Math.min(jm,5)] = (jpDist[Math.min(jm,5)]||0)+1;
+        }
       });
-      var jpAvg = jpT > 0 ? (jpS/jpT).toFixed(2) : '0.00';
-      var jpPerfect = jpDist[5]||0;
-      var jpPpct = jpT > 0 ? Math.round(jpPerfect/jpT*100) : 0;
-      var jp3plus = (jpDist[3]||0)+(jpDist[4]||0)+(jpDist[5]||0);
-      var jp3pct = jpT > 0 ? Math.round(jp3plus/jpT*100) : 0;
-      var jppc = jpPpct >= 5 ? '#22c55e' : jpPpct >= 1 ? '#facc15' : '#facc15';
-      h += '<div class="sr"><div class="sl">Jackpot (5/5 tam tuttu)</div><div class="srr">';
-      h += '<div class="sp" style="color:' + jppc + '">%' + jpPpct + '</div><div class="ss">' + jpPerfect + '/' + jpT + ' tam tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:' + Math.min(jpPpct*10,100) + '%;background:' + jppc + '"></div></div></div></div>';
-      h += '<div class="ar"><div class="sl">Jackpot \u2192 ort. kac sayi tuttu</div>';
-      h += '<div style="font-size:16px;font-weight:900;color:#facc15">' + jpAvg + ' / 5</div></div>';
-      h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">JACKPOT DAGILIMI (3+ = \u0130Y\u0130)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
-      for (var _jp=0; _jp<=5; _jp++) {
-        var _jc = _jp>=4?'#22c55e':_jp>=3?'#facc15':'#ef4444';
-        var _jb = _jp>=4?'#22c55e44':_jp>=3?'#facc1544':'#2a2f42';
-        h += '<div style="background:#1e2130;border:1px solid '+_jb+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_jp+'/5: </span><span style="color:'+_jc+';font-weight:800">'+(jpDist[_jp]||0)+'x</span></div>';
+      if (jpT > 0) {
+        var jpAvg = (jpS/jpT).toFixed(2);
+        var jpPerfect = jpDist[5]||0;
+        var jpPpct = Math.round(jpPerfect/jpT*100);
+        var jppc = jpPpct >= 5 ? '#22c55e' : '#facc15';
+        h += '<div class="sr"><div class="sl">Jackpot (5/5 tam tuttu)</div><div class="srr">';
+        h += '<div class="sp" style="color:' + jppc + '">%' + jpPpct + '</div><div class="ss">' + jpPerfect + '/' + jpT + ' tam tuttu</div>';
+        h += '<div class="bar"><div class="bf" style="width:' + Math.min(jpPpct*10,100) + '%;background:' + jppc + '"></div></div></div></div>';
+        h += '<div class="ar"><div class="sl">Jackpot \u2192 ort. kac sayi tuttu</div>';
+        h += '<div style="font-size:16px;font-weight:900;color:#facc15">' + jpAvg + ' / 5</div></div>';
+        h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">JACKPOT DAGILIMI (3+ = \u0130Y\u0130)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+        for (var _jp=0; _jp<=5; _jp++) {
+          var _jc = _jp>=4?'#22c55e':_jp>=3?'#facc15':'#ef4444';
+          var _jb = _jp>=4?'#22c55e44':_jp>=3?'#facc1544':'#2a2f42';
+          h += '<div style="background:#1e2130;border:1px solid '+_jb+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_jp+'/5: </span><span style="color:'+_jc+';font-weight:800">'+(jpDist[_jp]||0)+'x</span></div>';
+        }
+        h += '</div></div>';
       }
-      h += '</div></div>';
 
       h += '<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
 
@@ -1582,7 +1604,9 @@ function startDashboard() {
         h += '<div class="mc">Kesin 6 \u2192 35 sayi: <strong style="color:' + (c6m>=5?'#22c55e':c6m>=4?'#facc15':'#aab0c4') + '">' + c6m + '/6</strong></div>';
         h += '<div class="mc">Kesin 7 \u2192 35 sayi: <strong style="color:#d4a843">' + c7m + '/7</strong></div>';
         h += '<div class="mc">Kesin 8 \u2192 35 sayi: <strong style="color:' + (c8fm>=6?'#22c55e':c8fm>=4?'#facc15':'#aab0c4') + '">' + c8fm + '/8</strong></div>';
-        h += '<div class="mc">Jackpot: <strong style="color:' + (jpM2>=4?'#22c55e':jpM2>=3?'#facc15':'#aab0c4') + '">' + jpM2 + '/5</strong></div>';
+        if (jpM2 !== '-') {
+          h += '<div class="mc">Jackpot: <strong style="color:' + (jpM2>=4?'#22c55e':jpM2>=3?'#facc15':'#aab0c4') + '">' + jpM2 + '/5</strong></div>';
+        }
         h += '</div></div>';
       });
 
