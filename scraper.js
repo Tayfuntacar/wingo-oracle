@@ -1402,10 +1402,15 @@ function startDashboard() {
       // Jackpot istatistik
       var jpT = 0, jpS = 0, jpDist = {0:0,1:0,2:0,3:0,4:0,5:0};
       rows.forEach(function(rr) {
+        if (!rr.pred_jackpot || rr.pred_jackpot === '') return;
         var jm = parseInt(rr.jackpot_match);
-        if (!isNaN(jm) && jm >= 0 && rr.pred_jackpot && rr.pred_jackpot !== '') {
-          jpT++; jpS += jm; jpDist[Math.min(jm,5)] = (jpDist[Math.min(jm,5)]||0)+1;
+        // jackpot_match yoksa actual_jackpot'tan hesapla
+        if ((isNaN(jm) || jm < 0) && rr.actual_jackpot && rr.actual_jackpot !== '') {
+          var pj = rr.pred_jackpot.split(',').map(Number);
+          var aj = rr.actual_jackpot.split(',').map(Number);
+          jm = aj.filter(function(n){ return pj.indexOf(n) !== -1; }).length;
         }
+        if (!isNaN(jm) && jm >= 0) { jpT++; jpS += jm; jpDist[Math.min(jm,5)] = (jpDist[Math.min(jm,5)]||0)+1; }
       });
       if (jpT > 0) {
         var jpAvg = (jpS/jpT).toFixed(2);
@@ -1570,16 +1575,26 @@ function startDashboard() {
         // Jackpot
         var pJp2 = r.pred_jackpot ? r.pred_jackpot.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
         var aJp2 = r.actual_jackpot ? r.actual_jackpot.split(',').map(Number) : [];
-        var jpM2 = parseInt(r.jackpot_match) >= 0 ? parseInt(r.jackpot_match) : '-';
+        // jackpot_match DB'de yoksa actual_jackpot'tan hesapla
+        var jpM2raw = parseInt(r.jackpot_match);
+        var jpM2;
+        if (jpM2raw >= 0) {
+          jpM2 = jpM2raw;
+        } else if (pJp2.length > 0 && aJp2.length > 0) {
+          jpM2 = aJp2.filter(function(n){ return pJp2.indexOf(n) !== -1; }).length;
+        } else {
+          jpM2 = '-';
+        }
         if (pJp2.length > 0) {
-          var jpColor = jpM2 >= 4 ? '#22c55e' : jpM2 >= 3 ? '#facc15' : '#facc15';
-          h += '<div class="lbl">JACKPOT TAHMİNİ \u2014 <span style="color:'+jpColor+';font-weight:900">'+jpM2+'/5 tuttu</span></div>';
+          var jpColor = jpM2 !== '-' ? (jpM2 >= 4 ? '#22c55e' : '#facc15') : '#5a6180';
+          var jpLabel = jpM2 !== '-' ? (jpM2 + '/5 tuttu') : 'Bekleniyor';
+          h += '<div class="lbl">JACKPOT TAHMİNİ \u2014 <span style="color:'+jpColor+';font-weight:900">'+jpLabel+'</span></div>';
           h += '<div class="nr">';
           pJp2.forEach(function(num) {
             var inJp = aJp2.indexOf(num) !== -1;
             var bg  = inJp ? '#3a2000' : '#1e2130';
-            var brd = inJp ? '#facc15' : '#4a5270';
-            var cl  = inJp ? '#facc15' : '#aab0c4';
+            var brd = (jpM2 !== '-' && inJp) ? '#facc15' : '#4a5270';
+            var cl  = (jpM2 !== '-' && inJp) ? '#facc15' : '#aab0c4';
             h += '<div class="nb" style="background:'+bg+';border:2px solid '+brd+';color:'+cl+'">'+num+'</div>';
           });
           h += '</div>';
@@ -1592,11 +1607,11 @@ function startDashboard() {
               h += '<div class="nb" style="background:#1e2130;border:2px solid '+brd+';color:'+cl+'">'+num+'</div>';
             });
             h += '</div>';
+            h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
+            h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3a2000;border:2px solid #facc15;vertical-align:middle"></span> Tuttu</span>';
+            h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e2130;border:1px solid #4a5270;vertical-align:middle"></span> Tutmadi</span>';
+            h += '</div>';
           }
-          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3a2000;border:2px solid #facc15;vertical-align:middle"></span> Tuttu</span>';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e2130;border:1px solid #4a5270;vertical-align:middle"></span> Tutmadi</span>';
-          h += '</div>';
         }
 
         // Özet
