@@ -133,7 +133,7 @@ function connect() {
                   if (wsRound === lastProcessedWsRound) return;
                   lastProcessedWsRound = wsRound;
                   var first = parseInt(a.ballNumbers[0]);
-                  var first5 = a.ballNumbers.slice(0, 5).map(Number);
+                  var first5 = a.ballNumbers.slice(0, 6).map(Number);
                   var allNums = a.ballNumbers.map(Number);
                   var ou = first > 24 ? 'OVER' : 'UNDER';
                   var renk = colors[first] || 'Bilinmiyor';
@@ -1357,7 +1357,7 @@ function startDashboard() {
 
         // Tahmin 5 - ilk sayı
         if (pf1.length > 0) {
-          h += '<div class="lbl">TAHMIN 5 \u2014 1. Sayi Adaylari</div><div class="nr">';
+          h += '<div class="lbl">TAHMIN 8 \u2014 1. Sayi Adaylari</div><div class="nr">';
           pf1.forEach(function(num) {
             var isF = num === parseInt(r.actual_first);
             h += '<div class="nb" style="background:' + (isF?'#14532d':'#1e2130') + ';border:' + (isF?'2px solid #22c55e':'1px solid #3b82f6') + ';color:' + (isF?'#22c55e':'#93c5fd') + '">' + num + '</div>';
@@ -1365,9 +1365,9 @@ function startDashboard() {
           h += '<span style="font-size:11px;color:' + (firstHitR?'#22c55e':'#ef4444') + ';margin-left:6px;font-weight:800">' + (firstHitR?'\u2713 TUTTU':'\u2717 KACTI') + '</span></div>';
         }
 
-        // Gerçek ilk 5
+        // Gerçek ilk 6
         if (af5.length > 0) {
-          h += '<div class="lbl">GERCEK ILK 5</div><div class="nr">';
+          h += '<div class="lbl">GERCEK ILK 6</div><div class="nr">';
           af5.forEach(function(num) {
             h += '<div class="nb" style="background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd">' + num + '</div>';
           });
@@ -1381,7 +1381,7 @@ function startDashboard() {
           pc6.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            // Yeşil = ilk 5'te çıktı | Kırmızı/turuncu = 35'te çıktı | Gri = çıkmadı
+            // Mavi dolu = ilk 6'da çıktı | Mavi açık = 35'te çıktı | Gri = çıkmadı
             var bg  = inIlk5 ? '#0f4a66' : inFull ? '#0c2a3a' : '#2a3040';
             var brd = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#4a5270';
             var cl  = inIlk5 ? '#7dd3fc'  : inFull ? '#38bdf8' : '#aab0c4';
@@ -1389,7 +1389,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 5\'te cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 6\'da cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0c2a3a;border:2px solid #38bdf8;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
@@ -1427,7 +1427,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#14532d;border:1px solid #22c55e;vertical-align:middle"></span> Ilk5\'te cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#14532d;border:1px solid #22c55e;vertical-align:middle"></span> Ilk6\'da cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1a3a2a;border:1px solid #16a34a;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
