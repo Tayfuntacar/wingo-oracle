@@ -52,6 +52,12 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain7_match INT DEFAULT -1');
 }).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_jackpot TEXT');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS actual_jackpot TEXT');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS jackpot_match INT DEFAULT -1');
+}).then(function() {
   console.log('Tablolar hazir!');
   return loadCacheFromDB();
 }).then(function() {
@@ -190,11 +196,15 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
       var c6Match     = pc6.length > 0 ? allNums.filter(function(n) { return pc6.indexOf(n) !== -1; }).length : -1;
       var pc7         = row.pred_certain7 ? row.pred_certain7.split(',').map(Number) : [];
       var c7Match     = pc7.length > 0 ? allNums.filter(function(n) { return pc7.indexOf(n) !== -1; }).length : -1;
+      // Jackpot: 15-19-23-27-35. pozisyonlardaki gerçek sayılar
+      var actualJpNums = [14,18,22,26,34].map(function(pos){ return pos < allNums.length ? allNums[pos] : null; }).filter(function(x){ return x !== null; });
+      var pJp = row.pred_jackpot ? row.pred_jackpot.split(',').map(Number) : [];
+      var jpMatch = pJp.length > 0 ? actualJpNums.filter(function(n) { return pJp.indexOf(n) !== -1; }).length : -1;
       dbQuery(
-        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14 WHERE id=$15',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, row.id]
+        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14,actual_jackpot=$15,jackpot_match=$16 WHERE id=$17',
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, actualJpNums.join(','), jpMatch, row.id]
       ).then(function() {
-        console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6:' + c6Match + '/6 | C8:' + c8FullMatch + '/8');
+        console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6:' + c6Match + '/6 | C8:' + c8FullMatch + '/8 | JP:' + jpMatch + '/5');
       }).catch(function(e) { console.log('Update hatasi:', e.message); });
     });
   }).catch(function(e) { console.log('UpdatePred hatasi:', e.message); });
@@ -212,7 +222,7 @@ function saveNextPrediction(round, callback) {
     var nextRound = round + 1;
     console.log('--- TAHMIN: Round ' + nextRound + ' -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     dbQuery(
-      'INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (round) DO UPDATE SET pred_ou=$2,pred_color=$3,pred_first=$4,pred_first5=$5,pred_certain8=$6,pred_certain6=$7,pred_certain7=$8 WHERE predictions.ou_hit=-1',
+      'INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (round) DO UPDATE SET pred_ou=$2,pred_color=$3,pred_first=$4,pred_first5=$5,pred_certain8=$6,pred_certain6=$7,pred_certain7=$8,pred_jackpot=$9 WHERE predictions.ou_hit=-1',
       [nextRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
@@ -220,7 +230,8 @@ function saveNextPrediction(round, callback) {
        pred.first_candidates  ? pred.first_candidates.join(',')  : '',
        pred.certain8          ? pred.certain8.join(',')          : '',
        pred.certain6          ? pred.certain6.join(',')          : '',
-       pred.certain7          ? pred.certain7.join(',')          : '']
+       pred.certain7          ? pred.certain7.join(',')          : '',
+       pred.jackpot           ? pred.jackpot.join(',')           : '']
     ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound); if (callback) callback(); })
      .catch(function(e) { console.log('SavePred hatasi:', e.message); if (callback) callback(); });
   }).catch(function(e) { console.log('SaveNextPred hatasi:', e.message); });
@@ -1080,6 +1091,80 @@ function predict(draws) {
   }
   result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
 
+  // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
+  // 3 güçlü sinyal:
+  // 1. Pozisyon bazlı tarihsel favoriler (son 200 roundda o pozisyonda en sık çıkan)
+  // 2. Sıcak sayılar MS=0/1 (az önce çıkmış) → bonus puan
+  // 3. Önceki roundun JP sayıları → kara liste (tekrar ihtimali düşük %10.2 vs beklenen %10.4)
+
+  var JP_POSITIONS = [14, 18, 22, 26, 34]; // 0-indexed
+
+  // --- Sinyal 1: Pozisyon bazlı tarihsel frekans (son 200 round) ---
+  var jpFreq = {};
+  JP_POSITIONS.forEach(function(pos) { jpFreq[pos] = {}; });
+  var jpDraws = draws.slice(0, Math.min(200, n));
+  jpDraws.forEach(function(d) {
+    if (!d.all_numbers) return;
+    var nums = d.all_numbers.split(',').map(Number);
+    JP_POSITIONS.forEach(function(pos) {
+      if (pos < nums.length) {
+        var num = nums[pos];
+        jpFreq[pos][num] = (jpFreq[pos][num] || 0) + 1;
+      }
+    });
+  });
+
+  // --- Sinyal 2: Sıcak sayılar — son 5 roundda çıkan sayılar (MS=0/1 proxy) ---
+  var hotNums = {};
+  draws.slice(0, Math.min(5, n)).forEach(function(d, di) {
+    if (!d.all_numbers) return;
+    d.all_numbers.split(',').map(Number).forEach(function(num) {
+      // Yakın geçmiş → daha yüksek ağırlık
+      hotNums[num] = (hotNums[num] || 0) + (5 - di);
+    });
+  });
+
+  // --- Sinyal 3: Kara liste — önceki roundun JP sayıları ---
+  var jpBlacklist = {};
+  if (draws[0] && draws[0].all_numbers) {
+    var prevNums0jp = draws[0].all_numbers.split(',').map(Number);
+    JP_POSITIONS.forEach(function(pos) {
+      if (pos < prevNums0jp.length) {
+        jpBlacklist[prevNums0jp[pos]] = true;
+      }
+    });
+  }
+
+  // --- Skorlama: her pozisyon için aday listesi oluştur ---
+  var jpCandidates = [];
+  var usedJp = {};
+
+  JP_POSITIONS.forEach(function(pos) {
+    var freq = jpFreq[pos];
+    // Her aday için birleşik skor hesapla
+    var scored = Object.keys(freq).map(Number).map(function(num) {
+      var freqScore = freq[num] / Math.min(200, n) * 100; // tarihsel frekans puanı
+      var hotBonus  = hotNums[num] ? (hotNums[num] / 5) * 30 : 0; // sıcak sayı bonusu (max +30)
+      var blackPenalty = jpBlacklist[num] ? -50 : 0; // kara liste cezası
+      return { num: num, score: freqScore + hotBonus + blackPenalty };
+    });
+
+    // Skora göre sırala
+    scored.sort(function(a, b) { return b.score - a.score; });
+
+    // En yüksek skorlu, daha önce seçilmemiş sayıyı al
+    for (var si = 0; si < scored.length; si++) {
+      var candidate = scored[si].num;
+      if (!usedJp[candidate]) {
+        jpCandidates.push(candidate);
+        usedJp[candidate] = true;
+        break;
+      }
+    }
+  });
+
+  result.jackpot = jpCandidates.sort(function(a, b) { return a - b; });
+
 
   // ── TÜM SİNYAL BİLGİLERİ ──
   result.signals = {
@@ -1180,7 +1265,7 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    dbQuery("SELECT p.*,d.all_numbers as actual_all,p.certain7_match FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.created_at DESC LIMIT 1000").then(function(result) {
+    dbQuery("SELECT p.*,d.all_numbers as actual_all,p.certain7_match,p.pred_jackpot,p.actual_jackpot,p.jackpot_match FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.created_at DESC LIMIT 1000").then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
       var c6T = 0, c6S = 0, c8FT = 0, c8FS = 0;
@@ -1294,6 +1379,31 @@ function startDashboard() {
       }
       h += '</div></div>';
 
+      // Jackpot istatistik
+      var jpT = 0, jpS = 0, jpDist = {0:0,1:0,2:0,3:0,4:0,5:0};
+      rows.forEach(function(rr) {
+        var jm = parseInt(rr.jackpot_match);
+        if (!isNaN(jm) && jm >= 0) { jpT++; jpS += jm; jpDist[Math.min(jm,5)] = (jpDist[Math.min(jm,5)]||0)+1; }
+      });
+      var jpAvg = jpT > 0 ? (jpS/jpT).toFixed(2) : '0.00';
+      var jpPerfect = jpDist[5]||0;
+      var jpPpct = jpT > 0 ? Math.round(jpPerfect/jpT*100) : 0;
+      var jp3plus = (jpDist[3]||0)+(jpDist[4]||0)+(jpDist[5]||0);
+      var jp3pct = jpT > 0 ? Math.round(jp3plus/jpT*100) : 0;
+      var jppc = jpPpct >= 5 ? '#22c55e' : jpPpct >= 1 ? '#facc15' : '#facc15';
+      h += '<div class="sr"><div class="sl">Jackpot (5/5 tam tuttu)</div><div class="srr">';
+      h += '<div class="sp" style="color:' + jppc + '">%' + jpPpct + '</div><div class="ss">' + jpPerfect + '/' + jpT + ' tam tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:' + Math.min(jpPpct*10,100) + '%;background:' + jppc + '"></div></div></div></div>';
+      h += '<div class="ar"><div class="sl">Jackpot \u2192 ort. kac sayi tuttu</div>';
+      h += '<div style="font-size:16px;font-weight:900;color:#facc15">' + jpAvg + ' / 5</div></div>';
+      h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">JACKPOT DAGILIMI (3+ = \u0130Y\u0130)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+      for (var _jp=0; _jp<=5; _jp++) {
+        var _jc = _jp>=4?'#22c55e':_jp>=3?'#facc15':'#ef4444';
+        var _jb = _jp>=4?'#22c55e44':_jp>=3?'#facc1544':'#2a2f42';
+        h += '<div style="background:#1e2130;border:1px solid '+_jb+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_jp+'/5: </span><span style="color:'+_jc+';font-weight:800">'+(jpDist[_jp]||0)+'x</span></div>';
+      }
+      h += '</div></div>';
+
       h += '<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
 
       rows.forEach(function(r) {
@@ -1301,8 +1411,10 @@ function startDashboard() {
         var colorHitR = parseInt(r.color_hit) === 1;
         var firstHitR = parseInt(r.first_hit) === 1;
 
-        var af5  = r.actual_first5 ? r.actual_first5.split(',').map(Number) : [];
+        var af5raw = r.actual_first5 ? r.actual_first5.split(',').map(Number) : [];
         var aAll = r.actual_all    ? r.actual_all.split(',').map(Number)    : [];
+        // Eski kayıtlarda 5 eleman var, all_numbers'dan ilk 6'yı al
+        var af5 = af5raw.length >= 6 ? af5raw : (aAll.length >= 6 ? aAll.slice(0, 6) : af5raw);
         var pf1  = r.pred_first    ? r.pred_first.split(',').map(Number).sort(function(a,b){return a-b;})    : [];
         var pc6  = r.pred_certain6 ? r.pred_certain6.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
         var pc7  = r.pred_certain7 ? r.pred_certain7.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
@@ -1433,11 +1545,44 @@ function startDashboard() {
           h += '</div>';
         }
 
+        // Jackpot
+        var pJp2 = r.pred_jackpot ? r.pred_jackpot.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
+        var aJp2 = r.actual_jackpot ? r.actual_jackpot.split(',').map(Number) : [];
+        var jpM2 = parseInt(r.jackpot_match) >= 0 ? parseInt(r.jackpot_match) : '-';
+        if (pJp2.length > 0) {
+          var jpColor = jpM2 >= 4 ? '#22c55e' : jpM2 >= 3 ? '#facc15' : '#facc15';
+          h += '<div class="lbl">JACKPOT TAHMİNİ (15-19-23-27-35. TOP) \u2014 <span style="color:'+jpColor+';font-weight:900">'+jpM2+'/5 tuttu</span></div>';
+          h += '<div class="nr">';
+          pJp2.forEach(function(num) {
+            var inJp = aJp2.indexOf(num) !== -1;
+            var bg  = inJp ? '#3a2000' : '#1e2130';
+            var brd = inJp ? '#facc15' : '#4a5270';
+            var cl  = inJp ? '#facc15' : '#aab0c4';
+            h += '<div class="nb" style="background:'+bg+';border:2px solid '+brd+';color:'+cl+'">'+num+'</div>';
+          });
+          h += '</div>';
+          if (aJp2.length > 0) {
+            h += '<div class="lbl" style="margin-top:4px">GERCEK JACKPOT SAYILARI</div><div class="nr">';
+            aJp2.forEach(function(num) {
+              var inPred = pJp2.indexOf(num) !== -1;
+              var brd = inPred ? '#facc15' : '#3a3f52';
+              var cl  = inPred ? '#facc15' : '#5a6180';
+              h += '<div class="nb" style="background:#1e2130;border:2px solid '+brd+';color:'+cl+'">'+num+'</div>';
+            });
+            h += '</div>';
+          }
+          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3a2000;border:2px solid #facc15;vertical-align:middle"></span> Tuttu</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e2130;border:1px solid #4a5270;vertical-align:middle"></span> Tutmadi</span>';
+          h += '</div>';
+        }
+
         // Özet
         h += '<div class="mi">';
         h += '<div class="mc">Kesin 6 \u2192 35 sayi: <strong style="color:' + (c6m>=5?'#22c55e':c6m>=4?'#facc15':'#aab0c4') + '">' + c6m + '/6</strong></div>';
         h += '<div class="mc">Kesin 7 \u2192 35 sayi: <strong style="color:#d4a843">' + c7m + '/7</strong></div>';
         h += '<div class="mc">Kesin 8 \u2192 35 sayi: <strong style="color:' + (c8fm>=6?'#22c55e':c8fm>=4?'#facc15':'#aab0c4') + '">' + c8fm + '/8</strong></div>';
+        h += '<div class="mc">Jackpot: <strong style="color:' + (jpM2>=4?'#22c55e':jpM2>=3?'#facc15':'#aab0c4') + '">' + jpM2 + '/5</strong></div>';
         h += '</div></div>';
       });
 
@@ -1541,6 +1686,10 @@ function startDashboard() {
     h += 'var c8l=sig8.weakPeriod?"ZAYIF DONEM":sig8.badMs88?"ZAYIF":sig8.sig88>=2?"COK GUCLU":sig8.sig88>=1||sig8.c8strong?"GUCLU":"NORMAL";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 8 Sayi</span><span style=\'font-size:9px;color:"+c8b+";font-weight:800;padding:2px 6px;border:1px solid "+c8b+";border-radius:4px\'>"+c8l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
+    h += 'h+="</div></div>";}';
+    h += 'if(pr&&pr.jackpot&&pr.jackpot.length>0){';
+    h += 'h+="<div class=\'card\' style=\'border-color:#facc1566\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Jackpot Tahmini (15-19-23-27-35. Top)</span><span style=\'font-size:9px;color:#facc15;font-weight:800;padding:2px 6px;border:1px solid #facc15;border-radius:4px\'>5 SAYI</span></div><div class=\'nums\'>";';
+    h += 'pr.jackpot.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a1f00;border:2px solid #facc15;color:#facc15\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(d.stats){h+="<div class=\'card\'><div class=\'title\'>Istatistik ("+d.stats.total+" Round)</div>";';
     h += 'h+="<div class=\'str\'><span class=\'over\'>OVER %"+d.stats.over_pct+"</span><span class=\'under\'>UNDER %"+d.stats.under_pct+"</span></div>";';
