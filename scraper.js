@@ -32,9 +32,26 @@ process.on('unhandledRejection', function(e) { console.log('PROMISE HATASI:', e 
 
 db.connect().then(function() {
   console.log('DB baglandi!');
-  return dbQuery('CREATE TABLE IF NOT EXISTS draws (id SERIAL PRIMARY KEY, round INT UNIQUE, first INT, over_under VARCHAR(5), color VARCHAR(20), all_numbers TEXT, created_at TIMESTAMP DEFAULT NOW())');
+  return dbQuery('CREATE TABLE IF NOT EXISTS draws (id SERIAL PRIMARY KEY, round INT, first INT, over_under VARCHAR(5), color VARCHAR(20), all_numbers TEXT, created_at TIMESTAMP DEFAULT NOW(), week_number INT DEFAULT 0, global_round BIGINT)');
 }).then(function() {
-  return dbQuery('CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, round INT UNIQUE, pred_ou VARCHAR(5), pred_color VARCHAR(20), pred_first TEXT, pred_first5 TEXT, pred_certain8 TEXT, pred_certain6 TEXT, actual_first INT, actual_first5 TEXT, actual_color VARCHAR(20), actual_ou VARCHAR(5), ou_hit SMALLINT DEFAULT -1, color_hit SMALLINT DEFAULT -1, first_hit SMALLINT DEFAULT -1, first5_hit SMALLINT DEFAULT -1, certain8_hit SMALLINT DEFAULT -1, first5_match INT DEFAULT -1, certain8_match INT DEFAULT -1, certain8_full_match INT DEFAULT -1, certain6_match INT DEFAULT -1, created_at TIMESTAMP DEFAULT NOW())');
+  return dbQuery('CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, round INT, week_number INT DEFAULT 0, global_round BIGINT, pred_ou VARCHAR(5), pred_color VARCHAR(20), pred_first TEXT, pred_first5 TEXT, pred_certain8 TEXT, pred_certain6 TEXT, actual_first INT, actual_first5 TEXT, actual_color VARCHAR(20), actual_ou VARCHAR(5), ou_hit SMALLINT DEFAULT -1, color_hit SMALLINT DEFAULT -1, first_hit SMALLINT DEFAULT -1, first5_hit SMALLINT DEFAULT -1, certain8_hit SMALLINT DEFAULT -1, first5_match INT DEFAULT -1, certain8_match INT DEFAULT -1, certain8_full_match INT DEFAULT -1, certain6_match INT DEFAULT -1, created_at TIMESTAMP DEFAULT NOW())');
+}).then(function() {
+  // Eski tabloda round UNIQUE varsa global_round UNIQUE'e geç
+  return dbQuery('ALTER TABLE draws DROP CONSTRAINT IF EXISTS draws_round_key');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions DROP CONSTRAINT IF EXISTS predictions_round_key');
+}).then(function() {
+  return dbQuery('ALTER TABLE draws ADD COLUMN IF NOT EXISTS week_number INT DEFAULT 0');
+}).then(function() {
+  return dbQuery('ALTER TABLE draws ADD COLUMN IF NOT EXISTS global_round BIGINT');
+}).then(function() {
+  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS draws_global_round_idx ON draws(global_round) WHERE global_round IS NOT NULL');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS week_number INT DEFAULT 0');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS global_round BIGINT');
+}).then(function() {
+  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS predictions_global_round_idx ON predictions(global_round) WHERE global_round IS NOT NULL');
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS actual_first5 TEXT');
 }).then(function() {
@@ -104,7 +121,7 @@ function backfillCertain6() {
 }
 
 function loadCacheFromDB() {
-  return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200")
+  return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round DESC LIMIT 200")
   .then(function(drawRes) {
     if (drawRes.rows.length >= 10) {
       try {
@@ -179,25 +196,40 @@ function connect() {
   }).on('error', function(e) { console.log('HTTPS hatasi:', e.message); setTimeout(connect, 5000); }).end();
 }
 
+// Global round takibi — hafta sıfırlamasını aşmak için
+var currentWeekNumber = 0;
+var lastSeenRound = -1;
+
+function calcGlobalRound(round) {
+  // Round numarası düştüyse yeni hafta başladı
+  if (lastSeenRound > 0 && round < lastSeenRound - 100) {
+    currentWeekNumber++;
+    console.log('YENİ HAFTA! Week: ' + currentWeekNumber + ' Round sifirlandı: ' + lastSeenRound + ' → ' + round);
+  }
+  lastSeenRound = round;
+  return currentWeekNumber * 10000 + round;
+}
+
 function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
+  var globalRound = calcGlobalRound(round);
+  var weekNum = currentWeekNumber;
   dbQuery(
-    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at) VALUES ($1,$2,$3,$4,$5,NOW()) ON CONFLICT (round) DO UPDATE SET first=EXCLUDED.first, over_under=EXCLUDED.over_under, color=EXCLUDED.color, all_numbers=EXCLUDED.all_numbers, created_at=NOW() RETURNING id',
-    [round, first, ou, renk, allNumsStr]
+    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at, week_number, global_round) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT (global_round) DO UPDATE SET first=EXCLUDED.first, over_under=EXCLUDED.over_under, color=EXCLUDED.color, all_numbers=EXCLUDED.all_numbers, created_at=NOW() RETURNING id',
+    [round, first, ou, renk, allNumsStr, weekNum, globalRound]
   ).then(function(ins) {
     if (ins.rows.length === 0) {
-      console.log('Round ' + round + ' zaten var - tahmin guncelleniyor...');
+      console.log('Round ' + round + ' (global:' + globalRound + ') zaten var - tahmin guncelleniyor...');
     } else {
-      console.log('Draw kaydedildi: Round ' + round);
+      console.log('Draw kaydedildi: Round ' + round + ' (global:' + globalRound + ' week:' + weekNum + ')');
     }
-    // Once saveNextPrediction (certain6 yazar), sonra updatePredictions (certain6 okur)
-    saveNextPrediction(round, function() {
-      updatePredictions(round, first, first5, allNums, ou, renk);
+    saveNextPrediction(round, globalRound, weekNum, function() {
+      updatePredictions(round, globalRound, first, first5, allNums, ou, renk);
     });
   }).catch(function(e) { console.log('Draw hatasi:', e.message); });
 }
 
-function updatePredictions(round, first, first5, allNums, ou, renk) {
-  dbQuery('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7 FROM predictions WHERE round = $1', [round])
+function updatePredictions(round, globalRound, first, first5, allNums, ou, renk) {
+  dbQuery('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7, pred_jackpot FROM predictions WHERE global_round = $1', [globalRound])
   .then(function(res) {
     if (res.rows.length === 0) { console.log('Round ' + round + ' icin bekleyen tahmin yok.'); return; }
     res.rows.forEach(function(row) {
@@ -230,8 +262,8 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
   }).catch(function(e) { console.log('UpdatePred hatasi:', e.message); });
 }
 
-function saveNextPrediction(round, callback) {
-  dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200")
+function saveNextPrediction(round, globalRound, weekNum, callback) {
+  dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round DESC LIMIT 200")
   .then(function(res) {
     var draws = res.rows;
     if (draws.length < 10) { console.log('Yeterli veri yok (' + draws.length + '/10)'); if (callback) callback(); return; }
@@ -240,10 +272,11 @@ function saveNextPrediction(round, callback) {
     if (!pred || !pred.over_under) { console.log('Tahmin uretilmedi'); if (callback) callback(); return; }
     globalPredCache = pred;
     var nextRound = round + 1;
-    console.log('--- TAHMIN: Round ' + nextRound + ' -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
+    var nextGlobalRound = globalRound + 1;
+    console.log('--- TAHMIN: Round ' + nextRound + ' (global:' + nextGlobalRound + ') -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     dbQuery(
-      'INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (round) DO UPDATE SET pred_ou=$2,pred_color=$3,pred_first=$4,pred_first5=$5,pred_certain8=$6,pred_certain6=$7,pred_certain7=$8,pred_jackpot=$9 WHERE predictions.ou_hit=-1',
-      [nextRound,
+      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (global_round) DO UPDATE SET pred_ou=$4,pred_color=$5,pred_first=$6,pred_first5=$7,pred_certain8=$8,pred_certain6=$9,pred_certain7=$10,pred_jackpot=$11 WHERE predictions.ou_hit=-1',
+      [nextRound, weekNum, nextGlobalRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
        pred.first_candidates  ? pred.first_candidates.join(',')  : '',
@@ -252,7 +285,7 @@ function saveNextPrediction(round, callback) {
        pred.certain6          ? pred.certain6.join(',')          : '',
        pred.certain7          ? pred.certain7.join(',')          : '',
        pred.jackpot           ? pred.jackpot.join(',')           : '']
-    ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound); if (callback) callback(); })
+    ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound + ' (global:' + nextGlobalRound + ')'); if (callback) callback(); })
      .catch(function(e) { console.log('SavePred hatasi:', e.message); if (callback) callback(); });
   }).catch(function(e) { console.log('SaveNextPred hatasi:', e.message); });
 }
@@ -1228,7 +1261,7 @@ function startDashboard() {
     var done = false;
     var timer = setTimeout(function() { done = true; if (!res.headersSent) res.json({ error: 'Timeout' }); }, 8000);
     Promise.all([
-      dbQuery('SELECT round,first,over_under,color,all_numbers,created_at FROM draws ORDER BY created_at DESC LIMIT 200'),
+      dbQuery('SELECT round,week_number,global_round,first,over_under,color,all_numbers,created_at FROM draws ORDER BY global_round DESC LIMIT 200'),
       dbQuery("SELECT COUNT(*) as total, SUM(CASE WHEN over_under='OVER' THEN 1 ELSE 0 END) as over_count FROM draws")
     ]).then(function(r) {
       clearTimeout(timer); if (done) return;
@@ -1248,7 +1281,7 @@ function startDashboard() {
   });
 
   app.get('/draws.json', function(req, res) {
-    dbQuery('SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY round ASC')
+    dbQuery('SELECT round, week_number, global_round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round ASC')
     .then(function(result) {
       var data = result.rows.map(function(r, i) {
         return { seq: i + 1, round: r.round, first: r.first, ou: r.over_under, color: r.color, numbers: r.all_numbers, ts: r.created_at };
@@ -1260,7 +1293,7 @@ function startDashboard() {
   });
 
   app.get('/predictions.json', function(req, res) {
-    dbQuery("SELECT round, pred_ou, pred_color, pred_first, pred_first5, pred_certain6, pred_certain8, actual_first, actual_first5, actual_color, actual_ou, ou_hit, color_hit, first_hit, first5_match, certain6_match, certain8_full_match, created_at FROM predictions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at ASC")
+    dbQuery("SELECT round, week_number, global_round, pred_ou, pred_color, pred_first, pred_first5, pred_certain6, pred_certain8, actual_first, actual_first5, actual_color, actual_ou, ou_hit, color_hit, first_hit, first5_match, certain6_match, certain8_full_match, created_at FROM predictions WHERE ou_hit != -1 ORDER BY global_round ASC")
     .then(function(result) {
       var data = result.rows.map(function(r, i) {
         return {
@@ -1285,7 +1318,7 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    dbQuery("SELECT p.*,d.all_numbers as actual_all,p.certain7_match,p.pred_jackpot,p.actual_jackpot,p.jackpot_match FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.created_at DESC LIMIT 1000").then(function(result) {
+    dbQuery("SELECT p.*,d.all_numbers as actual_all,p.certain7_match,p.pred_jackpot,p.actual_jackpot,p.jackpot_match FROM predictions p LEFT JOIN draws d ON p.global_round=d.global_round WHERE p.ou_hit != -1 ORDER BY p.global_round DESC LIMIT 1000").then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
       var c6T = 0, c6S = 0, c8FT = 0, c8FS = 0;
