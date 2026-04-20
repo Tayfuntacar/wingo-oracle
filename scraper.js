@@ -66,6 +66,10 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS global_round BIGINT');
 }).then(function() {
+  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS draws_global_round_idx ON draws(global_round)');
+}).then(function() {
+  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS predictions_global_round_idx ON predictions(global_round)');
+}).then(function() {
   console.log('Tablolar hazir!');
   return loadCacheFromDB();
 }).then(function() {
@@ -218,7 +222,7 @@ function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
   var globalRound = calcGlobalRound(round);
   var weekNum = currentWeekNumber;
   dbQuery(
-    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at, week_number, global_round) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT (round) DO UPDATE SET first=EXCLUDED.first, over_under=EXCLUDED.over_under, color=EXCLUDED.color, all_numbers=EXCLUDED.all_numbers, created_at=NOW(), week_number=EXCLUDED.week_number, global_round=EXCLUDED.global_round RETURNING id',
+    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at, week_number, global_round) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT DO NOTHING RETURNING id',
     [round, first, ou, renk, allNumsStr, weekNum, globalRound]
   ).then(function(ins) {
     if (ins.rows.length === 0) {
@@ -280,7 +284,7 @@ function saveNextPrediction(round, globalRound, weekNum, callback) {
     var nextGlobalRound = globalRound + 1;
     console.log('--- TAHMIN: Round ' + nextRound + ' (global:' + nextGlobalRound + ') -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     dbQuery(
-      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (round) DO UPDATE SET week_number=$2,global_round=$3,pred_ou=$4,pred_color=$5,pred_first=$6,pred_first5=$7,pred_certain8=$8,pred_certain6=$9,pred_certain7=$10,pred_jackpot=$11 WHERE predictions.ou_hit=-1',
+      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING',
       [nextRound, weekNum, nextGlobalRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
