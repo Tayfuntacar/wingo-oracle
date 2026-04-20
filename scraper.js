@@ -112,7 +112,16 @@ function backfillCertain6() {
 }
 
 function loadCacheFromDB() {
-  return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200")
+  // Önce DB'den son week_number ve round bilgisini yükle
+  return dbQuery("SELECT round, week_number, global_round FROM draws ORDER BY global_round DESC NULLS LAST, created_at DESC LIMIT 1")
+  .then(function(wRes) {
+    if (wRes.rows.length > 0 && wRes.rows[0].week_number !== null) {
+      currentWeekNumber = parseInt(wRes.rows[0].week_number) || 0;
+      lastSeenRound = parseInt(wRes.rows[0].round) || -1;
+      console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound);
+    }
+    return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200");
+  })
   .then(function(drawRes) {
     if (drawRes.rows.length >= 10) {
       try {
@@ -176,7 +185,13 @@ function connect() {
                 if (j.target === 'ReceivePartialResult' && j.arguments && j.arguments[0] && j.arguments[0].ballNumbers && j.arguments[0].ballNumbers.length === 35) {
                   var a = j.arguments[0];
                   var wsRound = parseInt(a.number);
-                  if (wsRound === lastProcessedWsRound) return;
+                  // Aynı global round'u tekrar işleme (hafta değişince aynı round no olabilir)
+                  var wsGlobal = (currentWeekNumber * 10000) + wsRound;
+                  // Yeni hafta tespiti: round büyük düşüş yaşadıysa hafta değişmiştir
+                  if (lastSeenRound > 0 && wsRound < lastSeenRound - 100) {
+                    wsGlobal = ((currentWeekNumber + 1) * 10000) + wsRound;
+                  }
+                  if (wsRound === lastProcessedWsRound && wsGlobal <= (currentWeekNumber * 10000 + lastSeenRound)) return;
                   lastProcessedWsRound = wsRound;
                   var first = parseInt(a.ballNumbers[0]);
                   var first5 = a.ballNumbers.slice(0, 6).map(Number);
