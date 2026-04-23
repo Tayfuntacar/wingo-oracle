@@ -398,6 +398,51 @@ function predict(draws) {
     });
   }
 
+  // ── MS REGIME CLASSIFIER (GPT önerisi) ──
+  // LOW: UNDER + düşük first bias | HIGH: OVER + yüksek first bias | MID: nötr
+  var msRegime = 'MID';
+  if (predMs >= 958) msRegime = 'HIGH';
+  else if (predMs <= 954 && predMs >= 950) msRegime = 'LOW';
+
+  // ── LAST 2 DRAW TRANSITION / MEAN REVERSION (GPT önerisi) ──
+  // Aynı bant 2 kez üst üste gelince ters banda geç (mean reversion)
+  var last2TransBias = null; // 'HIGH_BAND' veya 'LOW_BAND'
+  if (firstNums.length >= 2) {
+    var f0 = firstNums[0]; // son çekiliş
+    var f1 = firstNums[1]; // bir önceki
+    var f2n = firstNums[2] || null; // iki önceki
+    var f0High = f0 > 24;
+    var f1High = f1 > 24;
+    // İki üst üste aynı bant → karşı banda geç
+    if (f0High && f1High) {
+      last2TransBias = 'LOW_BAND';  // 25-48 → 1-24 bekleniyor
+    } else if (!f0High && !f1High) {
+      last2TransBias = 'HIGH_BAND'; // 1-24 → 25-48 bekleniyor
+    }
+    // Üç üst üste aynı bant çok nadir → sinyal daha güçlü
+    if (f2n !== null) {
+      var f2High = f2n > 24;
+      if (f0High && f1High && f2High) {
+        last2TransBias = 'LOW_BAND_STRONG';
+      } else if (!f0High && !f1High && !f2High) {
+        last2TransBias = 'HIGH_BAND_STRONG';
+      }
+    }
+  }
+
+  // ── RECENCY WEIGHTED CLUSTER (GPT önerisi) ──
+  // Son 20 çekilişin tüm sayıları için decay ağırlıklı frekans
+  var clusterFreq = {}; for (var ci = 1; ci <= 48; ci++) clusterFreq[ci] = 0;
+  allNumsArr.slice(0, Math.min(20, n)).forEach(function(arr, idx) {
+    var w = Math.exp(-0.1 * idx); // recency decay
+    arr.forEach(function(num) {
+      if (num >= 1 && num <= 48) clusterFreq[num] += w;
+    });
+  });
+  // Cluster skorunu normalize et ve limit uygula (max 3 sayı aynı cluster'dan)
+  var clusterSorted = Object.keys(clusterFreq).map(Number)
+    .sort(function(a, b) { return clusterFreq[b] - clusterFreq[a]; });
+
   // ── SIFIR RENK SİNYALİ (son 10 turda) ──
   // 2414 çekiliş: 3 sıfır + en kısa bekleyen gelince %64 OVER
   var last10Colors = colorList.slice(0, Math.min(11, n));
@@ -545,6 +590,26 @@ function predict(draws) {
       predOU = streakOU.type; ouConf = 52; state = 'BALANCED';
     }
   }
+
+  // ── MS REGIME + LAST2TRANS OU DÜZELTME (GPT önerisi) ──
+  // Mevcut sinyal zayıfsa (BALANCED/TREND) regime ve transition bias devreye girer
+  if (state === 'BALANCED' || state === 'TREND_OVER' || state === 'TREND_UNDER') {
+    if (msRegime === 'HIGH') {
+      predOU = 'OVER'; ouConf = Math.max(ouConf, 56); state = 'MS_REGIME_HIGH';
+    } else if (msRegime === 'LOW') {
+      predOU = 'UNDER'; ouConf = Math.max(ouConf, 56); state = 'MS_REGIME_LOW';
+    }
+  }
+  // Last2Trans: bant bias ile OU uyumuyorsa düzelt (güçlü sinyal)
+  if (last2TransBias === 'HIGH_BAND_STRONG') {
+    predOU = 'OVER'; ouConf = Math.max(ouConf, 60); state = 'L2T_HIGH_STRONG';
+  } else if (last2TransBias === 'LOW_BAND_STRONG') {
+    predOU = 'UNDER'; ouConf = Math.max(ouConf, 60); state = 'L2T_LOW_STRONG';
+  } else if (last2TransBias === 'HIGH_BAND' && (state === 'BALANCED' || state === 'MS_REGIME_LOW')) {
+    predOU = 'OVER'; ouConf = Math.max(ouConf, 54); state = 'L2T_HIGH';
+  } else if (last2TransBias === 'LOW_BAND' && (state === 'BALANCED' || state === 'MS_REGIME_HIGH')) {
+    predOU = 'UNDER'; ouConf = Math.max(ouConf, 54); state = 'L2T_LOW';
+  }
   result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state, predMs: predMs, trendPct: Math.round(trendPct*100) };
 
   // ── RENK: MARKOV + SOĞUKLUK (son 200 baz) ──
@@ -663,7 +728,27 @@ function predict(draws) {
   }
   var allC = []; for (var i = 1; i <= 48; i++) allC.push(i);
   allC.sort(function(a, b) { return ns[b] - ns[a]; });
-  var filtC = allC.filter(function(x) { return predOU === 'OVER' ? x > 24 : x <= 24; });
+
+  // ── LAST2TRANS + MS REGIME FIRST BAND BIAS (GPT önerisi) ──
+  // Hangi bant bekleniyor? buna göre filtrele
+  var preferHighBand = null;
+  if (last2TransBias === 'HIGH_BAND_STRONG' || last2TransBias === 'HIGH_BAND') preferHighBand = true;
+  if (last2TransBias === 'LOW_BAND_STRONG'  || last2TransBias === 'LOW_BAND')  preferHighBand = false;
+  // MS regime ile destekle (bias yoksa devreye girer)
+  if (preferHighBand === null) {
+    if (msRegime === 'HIGH') preferHighBand = true;
+    else if (msRegime === 'LOW') preferHighBand = false;
+  }
+
+  var filtC;
+  if (preferHighBand === true) {
+    filtC = allC.filter(function(x) { return x > 24; });
+  } else if (preferHighBand === false) {
+    filtC = allC.filter(function(x) { return x <= 24; });
+  } else {
+    // Eski davranış: predOU'ya göre filtrele
+    filtC = allC.filter(function(x) { return predOU === 'OVER' ? x > 24 : x <= 24; });
+  }
   if (filtC.length < 5) filtC = allC;
   result.first_candidates  = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
   result.first5_candidates = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
@@ -1047,7 +1132,34 @@ function predict(draws) {
   if (specialC8 && specialC8.length === 8) {
     certain8List = specialC8.slice();
   } else {
-    certain8List = c6Scored.slice(0,8);
+    // ── CLUSTER LİMİT (GPT önerisi): aynı renk grubundan max 3 sayı ──
+    var c8Base = c6Scored.slice(0, 8);
+    var colorGroupCount = {};
+    var c8WithLimit = [];
+    c8Base.forEach(function(num) {
+      var numColor = colors[num] || 'X';
+      colorGroupCount[numColor] = (colorGroupCount[numColor] || 0) + 1;
+      if (colorGroupCount[numColor] <= 3) {
+        c8WithLimit.push(num);
+      }
+    });
+    // Eksik kalırsa clusterSorted'dan tamamla (limitli)
+    for (var cli = 0; c8WithLimit.length < 8 && cli < clusterSorted.length; cli++) {
+      var cn = clusterSorted[cli];
+      if (c8WithLimit.indexOf(cn) === -1) {
+        var cnColor = colors[cn] || 'X';
+        colorGroupCount[cnColor] = (colorGroupCount[cnColor] || 0);
+        if (colorGroupCount[cnColor] < 3) {
+          colorGroupCount[cnColor]++;
+          c8WithLimit.push(cn);
+        }
+      }
+    }
+    // Hala eksikse limit olmadan tamamla
+    for (var cli2 = 0; c8WithLimit.length < 8 && cli2 < c6Scored.length; cli2++) {
+      if (c8WithLimit.indexOf(c6Scored[cli2]) === -1) c8WithLimit.push(c6Scored[cli2]);
+    }
+    certain8List = c8WithLimit.slice(0, 8);
   }
   result.certain8 = certain8List.slice().sort(function(a,b){return a-b;});
 
@@ -1236,6 +1348,9 @@ function predict(draws) {
     zeroCount: zeroCount,
     shortestZeroColor: shortestZeroColor,
     colorCnt10: colorCnt11,
+    // GPT: MS Regime + Last2Trans
+    msRegime: msRegime,
+    last2TransBias: last2TransBias,
     // C6 sinyalleri
     sig66: strongSig66, badMs66: badMs66,
     c6strong: sig_c6_strong, c6weak: sig_c6_weak, siyahFull: siyahFull,
