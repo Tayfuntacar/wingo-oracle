@@ -1327,7 +1327,7 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    dbQuery("SELECT p.*,d.all_numbers as actual_all,p.certain7_match,p.pred_jackpot,p.actual_jackpot,p.jackpot_match FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.created_at DESC LIMIT 1000").then(function(result) {
+    dbQuery("SELECT DISTINCT ON (p.id) p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.global_round=d.global_round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.id DESC, p.created_at DESC LIMIT 1000").then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
       var c6T = 0, c6S = 0, c8FT = 0, c8FS = 0;
