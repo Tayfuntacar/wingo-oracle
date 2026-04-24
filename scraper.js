@@ -1734,14 +1734,16 @@ function startDashboard() {
           h += '<div class="lbl">KESIN 7 SAYI (RASTGELE) — <span style="color:#d4a843;font-weight:900">'+c7m+'/7 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
           pc7.forEach(function(num) {
+            var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            var bg  = inFull ? '#2a2000' : '#2a3040';
-            var brd = inFull ? '#d4a843' : '#4a5270';
-            var cl  = inFull ? '#d4a843' : '#aab0c4';
+            var bg  = inIlk5 ? '#3a2e00' : inFull ? '#2a2000' : '#2a3040';
+            var brd = inIlk5 ? '#facc15' : inFull ? '#d4a843' : '#4a5270';
+            var cl  = inIlk5 ? '#facc15' : inFull ? '#d4a843' : '#aab0c4';
             h += '<div class="nb" style="background:'+bg+';border:1px solid '+brd+';color:'+cl+'">'+num+'</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#facc15;border:1px solid #facc15;vertical-align:middle"></span> Ilk6\'da cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a2000;border:1px solid #d4a843;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
