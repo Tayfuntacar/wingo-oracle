@@ -52,52 +52,14 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain7_match INT DEFAULT -1');
 }).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_jackpot TEXT');
-}).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS actual_jackpot TEXT');
-}).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS jackpot_match INT DEFAULT -1');
-}).then(function() {
-  return dbQuery('ALTER TABLE draws ADD COLUMN IF NOT EXISTS week_number INT DEFAULT 0');
-}).then(function() {
-  return dbQuery('ALTER TABLE draws ADD COLUMN IF NOT EXISTS global_round BIGINT');
-}).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS week_number INT DEFAULT 0');
-}).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS global_round BIGINT');
-}).then(function() {
-  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS draws_global_round_idx ON draws(global_round)');
-}).then(function() {
-  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS predictions_global_round_idx ON predictions(global_round)');
-}).then(function() {
   console.log('Tablolar hazir!');
   return loadCacheFromDB();
 }).then(function() {
   return backfillCertain6();
 }).then(function() {
-  return backfillJackpot();
-}).then(function() {
   connect();
   startDashboard();
 }).catch(function(e) { console.log('DB hatasi:', e.message); });
-
-function backfillJackpot() {
-  return dbQuery(
-    "SELECT p.id, p.pred_jackpot, d.all_numbers FROM predictions p LEFT JOIN draws d ON p.round = d.round WHERE p.ou_hit != -1 AND p.pred_jackpot IS NOT NULL AND p.pred_jackpot != '' AND d.all_numbers IS NOT NULL AND (p.jackpot_match IS NULL OR p.jackpot_match = -1)"
-  ).then(function(res) {
-    if (res.rows.length === 0) { console.log('Jackpot backfill: guncellenecek kayit yok.'); return; }
-    console.log('Jackpot backfill: ' + res.rows.length + ' kayit guncelleniyor...');
-    var promises = res.rows.map(function(row) {
-      var pJp = row.pred_jackpot.split(',').map(Number);
-      var allNums = row.all_numbers.split(',').map(Number);
-      var actualJp = [14,18,22,26,34].map(function(pos){ return pos < allNums.length ? allNums[pos] : null; }).filter(function(x){ return x !== null; });
-      var jpMatch = actualJp.filter(function(n){ return pJp.indexOf(n) !== -1; }).length;
-      var actualJpStr = actualJp.join(',');
-      return dbQuery('UPDATE predictions SET actual_jackpot=$1, jackpot_match=$2 WHERE id=$3', [actualJpStr, jpMatch, row.id]);
-    });
-    return Promise.all(promises).then(function() { console.log('Jackpot backfill tamamlandi.'); });
-  }).catch(function(e) { console.log('Jackpot backfill hatasi:', e.message); });
-}
 
 function backfillCertain6() {
   return dbQuery(
@@ -116,16 +78,7 @@ function backfillCertain6() {
 }
 
 function loadCacheFromDB() {
-  // Önce DB'den son week_number ve round bilgisini yükle
-  return dbQuery("SELECT round, week_number, global_round FROM draws ORDER BY global_round DESC NULLS LAST, created_at DESC LIMIT 1")
-  .then(function(wRes) {
-    if (wRes.rows.length > 0 && wRes.rows[0].week_number !== null) {
-      currentWeekNumber = parseInt(wRes.rows[0].week_number) || 0;
-      lastSeenRound = parseInt(wRes.rows[0].round) || -1;
-      console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound);
-    }
-    return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200");
-  })
+  return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200")
   .then(function(drawRes) {
     if (drawRes.rows.length >= 10) {
       try {
@@ -139,18 +92,6 @@ function loadCacheFromDB() {
       console.log('Yeterli draw yok, cache bos kalacak.');
     }
   }).catch(function(e) { console.log('loadCacheFromDB hatasi:', e.message); });
-}
-
-// ── GLOBAL ROUND TAKIBI (haftalık sıfırlamayı aşmak için) ──
-var currentWeekNumber = 0;
-var lastSeenRound = -1;
-function calcGlobalRound(round) {
-  if (lastSeenRound > 0 && round < lastSeenRound - 100) {
-    currentWeekNumber++;
-    console.log('YENİ HAFTA! Week:' + currentWeekNumber + ' ' + lastSeenRound + '->' + round);
-  }
-  lastSeenRound = round;
-  return currentWeekNumber * 10000 + round;
 }
 
 var opt = {
@@ -189,16 +130,10 @@ function connect() {
                 if (j.target === 'ReceivePartialResult' && j.arguments && j.arguments[0] && j.arguments[0].ballNumbers && j.arguments[0].ballNumbers.length === 35) {
                   var a = j.arguments[0];
                   var wsRound = parseInt(a.number);
-                  // Aynı global round'u tekrar işleme (hafta değişince aynı round no olabilir)
-                  var wsGlobal = (currentWeekNumber * 10000) + wsRound;
-                  // Yeni hafta tespiti: round büyük düşüş yaşadıysa hafta değişmiştir
-                  if (lastSeenRound > 0 && wsRound < lastSeenRound - 100) {
-                    wsGlobal = ((currentWeekNumber + 1) * 10000) + wsRound;
-                  }
-                  if (wsRound === lastProcessedWsRound && wsGlobal <= (currentWeekNumber * 10000 + lastSeenRound)) return;
+                  if (wsRound === lastProcessedWsRound) return;
                   lastProcessedWsRound = wsRound;
                   var first = parseInt(a.ballNumbers[0]);
-                  var first5 = a.ballNumbers.slice(0, 6).map(Number);
+                  var first5 = a.ballNumbers.slice(0, 5).map(Number);
                   var allNums = a.ballNumbers.map(Number);
                   var ou = first > 24 ? 'OVER' : 'UNDER';
                   var renk = colors[first] || 'Bilinmiyor';
@@ -219,19 +154,17 @@ function connect() {
 }
 
 function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
-  var globalRound = calcGlobalRound(round);
-  var weekNum = currentWeekNumber;
   dbQuery(
-    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at, week_number, global_round) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT DO NOTHING RETURNING id',
-    [round, first, ou, renk, allNumsStr, weekNum, globalRound]
+    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at) VALUES ($1,$2,$3,$4,$5,NOW()) ON CONFLICT (round) DO UPDATE SET first=EXCLUDED.first, over_under=EXCLUDED.over_under, color=EXCLUDED.color, all_numbers=EXCLUDED.all_numbers, created_at=NOW() RETURNING id',
+    [round, first, ou, renk, allNumsStr]
   ).then(function(ins) {
     if (ins.rows.length === 0) {
       console.log('Round ' + round + ' zaten var - tahmin guncelleniyor...');
     } else {
-      console.log('Draw kaydedildi: Round ' + round + ' (global:' + globalRound + ' week:' + weekNum + ')');
+      console.log('Draw kaydedildi: Round ' + round);
     }
     // Once saveNextPrediction (certain6 yazar), sonra updatePredictions (certain6 okur)
-    saveNextPrediction(round, globalRound, weekNum, function() {
+    saveNextPrediction(round, function() {
       updatePredictions(round, first, first5, allNums, ou, renk);
     });
   }).catch(function(e) { console.log('Draw hatasi:', e.message); });
@@ -257,21 +190,17 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
       var c6Match     = pc6.length > 0 ? allNums.filter(function(n) { return pc6.indexOf(n) !== -1; }).length : -1;
       var pc7         = row.pred_certain7 ? row.pred_certain7.split(',').map(Number) : [];
       var c7Match     = pc7.length > 0 ? allNums.filter(function(n) { return pc7.indexOf(n) !== -1; }).length : -1;
-      // Jackpot: 15-19-23-27-35. pozisyonlardaki gerçek sayılar
-      var actualJpNums = [14,18,22,26,34].map(function(pos){ return pos < allNums.length ? allNums[pos] : null; }).filter(function(x){ return x !== null; });
-      var pJp = row.pred_jackpot ? row.pred_jackpot.split(',').map(Number) : [];
-      var jpMatch = pJp.length > 0 ? actualJpNums.filter(function(n) { return pJp.indexOf(n) !== -1; }).length : -1;
       dbQuery(
-        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14,actual_jackpot=$15,jackpot_match=$16 WHERE id=$17',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, actualJpNums.join(','), jpMatch, row.id]
+        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14 WHERE id=$15',
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, row.id]
       ).then(function() {
-        console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6:' + c6Match + '/6 | C8:' + c8FullMatch + '/8 | JP:' + jpMatch + '/5');
+        console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6:' + c6Match + '/6 | C8:' + c8FullMatch + '/8');
       }).catch(function(e) { console.log('Update hatasi:', e.message); });
     });
   }).catch(function(e) { console.log('UpdatePred hatasi:', e.message); });
 }
 
-function saveNextPrediction(round, globalRound, weekNum, callback) {
+function saveNextPrediction(round, callback) {
   dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200")
   .then(function(res) {
     var draws = res.rows;
@@ -281,20 +210,18 @@ function saveNextPrediction(round, globalRound, weekNum, callback) {
     if (!pred || !pred.over_under) { console.log('Tahmin uretilmedi'); if (callback) callback(); return; }
     globalPredCache = pred;
     var nextRound = round + 1;
-    var nextGlobalRound = globalRound + 1;
-    console.log('--- TAHMIN: Round ' + nextRound + ' (global:' + nextGlobalRound + ') -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
+    console.log('--- TAHMIN: Round ' + nextRound + ' -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     dbQuery(
-      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING',
-      [nextRound, weekNum, nextGlobalRound,
+      'INSERT INTO predictions (round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (round) DO UPDATE SET pred_ou=$2,pred_color=$3,pred_first=$4,pred_first5=$5,pred_certain8=$6,pred_certain6=$7,pred_certain7=$8 WHERE predictions.ou_hit=-1',
+      [nextRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
        pred.first_candidates  ? pred.first_candidates.join(',')  : '',
        pred.first_candidates  ? pred.first_candidates.join(',')  : '',
        pred.certain8          ? pred.certain8.join(',')          : '',
        pred.certain6          ? pred.certain6.join(',')          : '',
-       pred.certain7          ? pred.certain7.join(',')          : '',
-       pred.jackpot           ? pred.jackpot.join(',')           : '']
-    ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound + ' (global:' + nextGlobalRound + ')'); if (callback) callback(); })
+       pred.certain7          ? pred.certain7.join(',')          : '']
+    ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound); if (callback) callback(); })
      .catch(function(e) { console.log('SavePred hatasi:', e.message); if (callback) callback(); });
   }).catch(function(e) { console.log('SaveNextPred hatasi:', e.message); });
 }
@@ -397,51 +324,6 @@ function predict(draws) {
       if (msTrans[lastMs][ms] > bestCnt) { bestCnt = msTrans[lastMs][ms]; predMs = parseInt(ms); }
     });
   }
-
-  // ── MS REGIME CLASSIFIER (GPT önerisi) ──
-  // LOW: UNDER + düşük first bias | HIGH: OVER + yüksek first bias | MID: nötr
-  var msRegime = 'MID';
-  if (predMs >= 958) msRegime = 'HIGH';
-  else if (predMs <= 954 && predMs >= 950) msRegime = 'LOW';
-
-  // ── LAST 2 DRAW TRANSITION / MEAN REVERSION (GPT önerisi) ──
-  // Aynı bant 2 kez üst üste gelince ters banda geç (mean reversion)
-  var last2TransBias = null; // 'HIGH_BAND' veya 'LOW_BAND'
-  if (firstNums.length >= 2) {
-    var f0 = firstNums[0]; // son çekiliş
-    var f1 = firstNums[1]; // bir önceki
-    var f2n = firstNums[2] || null; // iki önceki
-    var f0High = f0 > 24;
-    var f1High = f1 > 24;
-    // İki üst üste aynı bant → karşı banda geç
-    if (f0High && f1High) {
-      last2TransBias = 'LOW_BAND';  // 25-48 → 1-24 bekleniyor
-    } else if (!f0High && !f1High) {
-      last2TransBias = 'HIGH_BAND'; // 1-24 → 25-48 bekleniyor
-    }
-    // Üç üst üste aynı bant çok nadir → sinyal daha güçlü
-    if (f2n !== null) {
-      var f2High = f2n > 24;
-      if (f0High && f1High && f2High) {
-        last2TransBias = 'LOW_BAND_STRONG';
-      } else if (!f0High && !f1High && !f2High) {
-        last2TransBias = 'HIGH_BAND_STRONG';
-      }
-    }
-  }
-
-  // ── RECENCY WEIGHTED CLUSTER (GPT önerisi) ──
-  // Son 20 çekilişin tüm sayıları için decay ağırlıklı frekans
-  var clusterFreq = {}; for (var ci = 1; ci <= 48; ci++) clusterFreq[ci] = 0;
-  allNumsArr.slice(0, Math.min(20, n)).forEach(function(arr, idx) {
-    var w = Math.exp(-0.1 * idx); // recency decay
-    arr.forEach(function(num) {
-      if (num >= 1 && num <= 48) clusterFreq[num] += w;
-    });
-  });
-  // Cluster skorunu normalize et ve limit uygula (max 3 sayı aynı cluster'dan)
-  var clusterSorted = Object.keys(clusterFreq).map(Number)
-    .sort(function(a, b) { return clusterFreq[b] - clusterFreq[a]; });
 
   // ── SIFIR RENK SİNYALİ (son 10 turda) ──
   // 2414 çekiliş: 3 sıfır + en kısa bekleyen gelince %64 OVER
@@ -590,26 +472,6 @@ function predict(draws) {
       predOU = streakOU.type; ouConf = 52; state = 'BALANCED';
     }
   }
-
-  // ── MS REGIME + LAST2TRANS OU DÜZELTME (GPT önerisi) ──
-  // Mevcut sinyal zayıfsa (BALANCED/TREND) regime ve transition bias devreye girer
-  if (state === 'BALANCED' || state === 'TREND_OVER' || state === 'TREND_UNDER') {
-    if (msRegime === 'HIGH') {
-      predOU = 'OVER'; ouConf = Math.max(ouConf, 56); state = 'MS_REGIME_HIGH';
-    } else if (msRegime === 'LOW') {
-      predOU = 'UNDER'; ouConf = Math.max(ouConf, 56); state = 'MS_REGIME_LOW';
-    }
-  }
-  // Last2Trans: bant bias ile OU uyumuyorsa düzelt (güçlü sinyal)
-  if (last2TransBias === 'HIGH_BAND_STRONG') {
-    predOU = 'OVER'; ouConf = Math.max(ouConf, 60); state = 'L2T_HIGH_STRONG';
-  } else if (last2TransBias === 'LOW_BAND_STRONG') {
-    predOU = 'UNDER'; ouConf = Math.max(ouConf, 60); state = 'L2T_LOW_STRONG';
-  } else if (last2TransBias === 'HIGH_BAND' && (state === 'BALANCED' || state === 'MS_REGIME_LOW')) {
-    predOU = 'OVER'; ouConf = Math.max(ouConf, 54); state = 'L2T_HIGH';
-  } else if (last2TransBias === 'LOW_BAND' && (state === 'BALANCED' || state === 'MS_REGIME_HIGH')) {
-    predOU = 'UNDER'; ouConf = Math.max(ouConf, 54); state = 'L2T_LOW';
-  }
   result.over_under = { pred: predOU, conf: ouConf, streak: streakOU, state: state, predMs: predMs, trendPct: Math.round(trendPct*100) };
 
   // ── RENK: MARKOV + SOĞUKLUK (son 200 baz) ──
@@ -726,30 +588,50 @@ function predict(draws) {
            + nmScore[i] * 0.15
            + msBonus[i] * 0.15 * msBonusMultiplier;
   }
+  // ── FIRST8 YENİ MOTOR ──
+  // KRİTİK: First sayı %100 kendi renginin sayısından geliyor
+  // Renk tahminimiz doğruysa → sadece o rengin 6 sayısı aday
+  // OU filtresi ile 6'dan 3'e indirebiliriz
+  
+  var COLOR_NUMS_FIRST = {
+    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+  };
+
+  // MS+Renk özel first sinyalleri (4315 çekiliş %30+)
+  var MS_RENK_FIRST = {
+    '957_Turuncu': 30, '956_Mor': 32, '957_Mor': 40,
+    '958_Siyah': 31, '959_Turuncu': 30, '958_Mavi': 27, '957_Yesil': 26
+  };
+  var msRenkFirstKey = predMs + '_' + predColor;
+  var msRenkFirstNum = MS_RENK_FIRST[msRenkFirstKey] || null;
+
+  // Renk sayılarını OU'ya göre filtrele
+  var colorNums = COLOR_NUMS_FIRST[predColor] || [];
+  var filtByOU = colorNums.filter(function(x){ 
+    return predOU === 'OVER' ? x > 24 : x <= 24; 
+  });
+  if (filtByOU.length < 3) filtByOU = colorNums; // OU uyumu yoksa tümünü al
+
+  // NS skoruna göre sırala
+  var filtC = filtByOU.slice().sort(function(a,b){ return ns[b]-ns[a]; });
+
+  // MS+Renk sinyali varsa başa al
+  if (msRenkFirstNum && filtC.indexOf(msRenkFirstNum) === -1) {
+    filtC.unshift(msRenkFirstNum);
+  } else if (msRenkFirstNum) {
+    filtC.splice(filtC.indexOf(msRenkFirstNum), 1);
+    filtC.unshift(msRenkFirstNum);
+  }
+
+  // 8'e tamamla — eksikse diğer renk sayılarından ekle
   var allC = []; for (var i = 1; i <= 48; i++) allC.push(i);
-  allC.sort(function(a, b) { return ns[b] - ns[a]; });
-
-  // ── LAST2TRANS + MS REGIME FIRST BAND BIAS (GPT önerisi) ──
-  // Hangi bant bekleniyor? buna göre filtrele
-  var preferHighBand = null;
-  if (last2TransBias === 'HIGH_BAND_STRONG' || last2TransBias === 'HIGH_BAND') preferHighBand = true;
-  if (last2TransBias === 'LOW_BAND_STRONG'  || last2TransBias === 'LOW_BAND')  preferHighBand = false;
-  // MS regime ile destekle (bias yoksa devreye girer)
-  if (preferHighBand === null) {
-    if (msRegime === 'HIGH') preferHighBand = true;
-    else if (msRegime === 'LOW') preferHighBand = false;
+  allC.sort(function(a,b){ return ns[b]-ns[a]; });
+  for (var ai=0; filtC.length<8 && ai<allC.length; ai++) {
+    if (filtC.indexOf(allC[ai]) === -1) filtC.push(allC[ai]);
   }
 
-  var filtC;
-  if (preferHighBand === true) {
-    filtC = allC.filter(function(x) { return x > 24; });
-  } else if (preferHighBand === false) {
-    filtC = allC.filter(function(x) { return x <= 24; });
-  } else {
-    // Eski davranış: predOU'ya göre filtrele
-    filtC = allC.filter(function(x) { return predOU === 'OVER' ? x > 24 : x <= 24; });
-  }
-  if (filtC.length < 5) filtC = allC;
   result.first_candidates  = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
   result.first5_candidates = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
   result.firstColorReliable = firstColorReliable;
@@ -1132,34 +1014,7 @@ function predict(draws) {
   if (specialC8 && specialC8.length === 8) {
     certain8List = specialC8.slice();
   } else {
-    // ── CLUSTER LİMİT (GPT önerisi): aynı renk grubundan max 3 sayı ──
-    var c8Base = c6Scored.slice(0, 8);
-    var colorGroupCount = {};
-    var c8WithLimit = [];
-    c8Base.forEach(function(num) {
-      var numColor = colors[num] || 'X';
-      colorGroupCount[numColor] = (colorGroupCount[numColor] || 0) + 1;
-      if (colorGroupCount[numColor] <= 3) {
-        c8WithLimit.push(num);
-      }
-    });
-    // Eksik kalırsa clusterSorted'dan tamamla (limitli)
-    for (var cli = 0; c8WithLimit.length < 8 && cli < clusterSorted.length; cli++) {
-      var cn = clusterSorted[cli];
-      if (c8WithLimit.indexOf(cn) === -1) {
-        var cnColor = colors[cn] || 'X';
-        colorGroupCount[cnColor] = (colorGroupCount[cnColor] || 0);
-        if (colorGroupCount[cnColor] < 3) {
-          colorGroupCount[cnColor]++;
-          c8WithLimit.push(cn);
-        }
-      }
-    }
-    // Hala eksikse limit olmadan tamamla
-    for (var cli2 = 0; c8WithLimit.length < 8 && cli2 < c6Scored.length; cli2++) {
-      if (c8WithLimit.indexOf(c6Scored[cli2]) === -1) c8WithLimit.push(c6Scored[cli2]);
-    }
-    certain8List = c8WithLimit.slice(0, 8);
+    certain8List = c6Scored.slice(0,8);
   }
   result.certain8 = certain8List.slice().sort(function(a,b){return a-b;});
 
@@ -1246,98 +1101,49 @@ function predict(draws) {
     certain6List.push(certain8List[c6j]);
   }
 
-  // C6: Sadece First8 havuzundan 6 sayı (premium havuz)
-  // Renk+OU sinyali varsa o grubu kullan, yoksa First8'den tekrar oranına göre top 6
+  // ── KESİN 6: Renk+OU > MS özel > 4 yüksek + 2 orta band ──
+  // 4315 çekiliş analizi: gerçek 6. sayı %88 orta-düşük band'dan (sıra 7+)
   var specialC6 = RENK_OU_C6[renkOuKey] || PREV_RENK_C6[prevColor||''] || RENK_C6[predColor] || null;
+
   if (specialC6 && specialC6.length >= 6) {
     result.certain6 = specialC6.slice(0,6).sort(function(a,b){return a-b;});
-  } else {
-    var firstCands = result.first_candidates || [];
-    var firstSorted = firstCands.slice().sort(function(a,b){
+  } else if (predMs === 955 || predMs === 960) {
+    // ms=955/960: %16.5 6/6 → 4 yüksek + 2 orta (sıra 7-8)
+    var ms_c6 = certain8List.slice(0,4);
+    var c8sorted = certain8List.slice().sort(function(a,b){
       return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
     });
-    // First8'den top 6 al, eksikse C8'den tamamla
-    var c6fromFirst = firstSorted.slice(0,6);
-    for (var fi=0; c6fromFirst.length<6 && fi<certain6List.length; fi++) {
-      if (c6fromFirst.indexOf(certain6List[fi]) === -1) c6fromFirst.push(certain6List[fi]);
+    for (var mc=6; ms_c6.length<6 && mc<c8sorted.length; mc++) {
+      if (ms_c6.indexOf(c8sorted[mc]) === -1) ms_c6.push(c8sorted[mc]);
     }
-    result.certain6 = c6fromFirst.sort(function(a,b){return a-b;});
+    // eksikse first8'den tamamla
+    var f8s = (result.first_candidates||[]).slice();
+    for (var mc2=0; ms_c6.length<6 && mc2<f8s.length; mc2++) {
+      if (ms_c6.indexOf(f8s[mc2]) === -1) ms_c6.push(f8s[mc2]);
+    }
+    result.certain6 = ms_c6.sort(function(a,b){return a-b;});
+  } else {
+    // Genel: C8'den 4 yüksek + 2 orta band (sıra 6-7) → %13.7
+    var firstCands = result.first_candidates || [];
+    var fullPool = certain8List.slice();
+    firstCands.forEach(function(x){
+      if (fullPool.indexOf(x)===-1) fullPool.push(x);
+    });
+    var poolSorted = fullPool.slice().sort(function(a,b){
+      return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
+    });
+    var c6general = poolSorted.slice(0,4); // top 4
+    // + 2 orta band (index 6-7)
+    for (var gi=6; c6general.length<6 && gi<poolSorted.length; gi++) {
+      if (c6general.indexOf(poolSorted[gi])===-1) c6general.push(poolSorted[gi]);
+    }
+    // eksikse devam
+    for (var gi2=4; c6general.length<6 && gi2<poolSorted.length; gi2++) {
+      if (c6general.indexOf(poolSorted[gi2])===-1) c6general.push(poolSorted[gi2]);
+    }
+    result.certain6 = c6general.sort(function(a,b){return a-b;});
   }
   result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
-
-  // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
-  // 3 güçlü sinyal:
-  // 1. Pozisyon bazlı tarihsel favoriler (son 200 roundda o pozisyonda en sık çıkan)
-  // 2. Sıcak sayılar MS=0/1 (az önce çıkmış) → bonus puan
-  // 3. Önceki roundun JP sayıları → kara liste (tekrar ihtimali düşük %10.2 vs beklenen %10.4)
-
-  var JP_POSITIONS = [14, 18, 22, 26, 34]; // 0-indexed
-
-  // --- Sinyal 1: Pozisyon bazlı tarihsel frekans (son 200 round) ---
-  var jpFreq = {};
-  JP_POSITIONS.forEach(function(pos) { jpFreq[pos] = {}; });
-  var jpDraws = draws.slice(0, Math.min(200, n));
-  jpDraws.forEach(function(d) {
-    if (!d.all_numbers) return;
-    var nums = d.all_numbers.split(',').map(Number);
-    JP_POSITIONS.forEach(function(pos) {
-      if (pos < nums.length) {
-        var num = nums[pos];
-        jpFreq[pos][num] = (jpFreq[pos][num] || 0) + 1;
-      }
-    });
-  });
-
-  // --- Sinyal 2: Sıcak sayılar — son 5 roundda çıkan sayılar (MS=0/1 proxy) ---
-  var hotNums = {};
-  draws.slice(0, Math.min(5, n)).forEach(function(d, di) {
-    if (!d.all_numbers) return;
-    d.all_numbers.split(',').map(Number).forEach(function(num) {
-      // Yakın geçmiş → daha yüksek ağırlık
-      hotNums[num] = (hotNums[num] || 0) + (5 - di);
-    });
-  });
-
-  // --- Sinyal 3: Kara liste — önceki roundun JP sayıları ---
-  var jpBlacklist = {};
-  if (draws[0] && draws[0].all_numbers) {
-    var prevNums0jp = draws[0].all_numbers.split(',').map(Number);
-    JP_POSITIONS.forEach(function(pos) {
-      if (pos < prevNums0jp.length) {
-        jpBlacklist[prevNums0jp[pos]] = true;
-      }
-    });
-  }
-
-  // --- Skorlama: her pozisyon için aday listesi oluştur ---
-  var jpCandidates = [];
-  var usedJp = {};
-
-  JP_POSITIONS.forEach(function(pos) {
-    var freq = jpFreq[pos];
-    // Her aday için birleşik skor hesapla
-    var scored = Object.keys(freq).map(Number).map(function(num) {
-      var freqScore = freq[num] / Math.min(200, n) * 100; // tarihsel frekans puanı
-      var hotBonus  = hotNums[num] ? (hotNums[num] / 5) * 30 : 0; // sıcak sayı bonusu (max +30)
-      var blackPenalty = jpBlacklist[num] ? -50 : 0; // kara liste cezası
-      return { num: num, score: freqScore + hotBonus + blackPenalty };
-    });
-
-    // Skora göre sırala
-    scored.sort(function(a, b) { return b.score - a.score; });
-
-    // En yüksek skorlu, daha önce seçilmemiş sayıyı al
-    for (var si = 0; si < scored.length; si++) {
-      var candidate = scored[si].num;
-      if (!usedJp[candidate]) {
-        jpCandidates.push(candidate);
-        usedJp[candidate] = true;
-        break;
-      }
-    }
-  });
-
-  result.jackpot = jpCandidates.sort(function(a, b) { return a - b; });
 
 
   // ── TÜM SİNYAL BİLGİLERİ ──
@@ -1348,9 +1154,6 @@ function predict(draws) {
     zeroCount: zeroCount,
     shortestZeroColor: shortestZeroColor,
     colorCnt10: colorCnt11,
-    // GPT: MS Regime + Last2Trans
-    msRegime: msRegime,
-    last2TransBias: last2TransBias,
     // C6 sinyalleri
     sig66: strongSig66, badMs66: badMs66,
     c6strong: sig_c6_strong, c6weak: sig_c6_weak, siyahFull: siyahFull,
@@ -1442,7 +1245,7 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    dbQuery("SELECT DISTINCT ON (p.id) p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.global_round=d.global_round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.id DESC, p.created_at DESC LIMIT 1000").then(function(result) {
+    dbQuery("SELECT p.*,d.all_numbers as actual_all,p.certain7_match FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.created_at DESC LIMIT 1000").then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
       var c6T = 0, c6S = 0, c8FT = 0, c8FS = 0;
@@ -1556,38 +1359,6 @@ function startDashboard() {
       }
       h += '</div></div>';
 
-      // Jackpot istatistik
-      var jpT = 0, jpS = 0, jpDist = {0:0,1:0,2:0,3:0,4:0,5:0};
-      rows.forEach(function(rr) {
-        if (!rr.pred_jackpot || rr.pred_jackpot === '') return;
-        var jm = parseInt(rr.jackpot_match);
-        // jackpot_match yoksa actual_jackpot'tan hesapla
-        if ((isNaN(jm) || jm < 0) && rr.actual_jackpot && rr.actual_jackpot !== '') {
-          var pj = rr.pred_jackpot.split(',').map(Number);
-          var aj = rr.actual_jackpot.split(',').map(Number);
-          jm = aj.filter(function(n){ return pj.indexOf(n) !== -1; }).length;
-        }
-        if (!isNaN(jm) && jm >= 0) { jpT++; jpS += jm; jpDist[Math.min(jm,5)] = (jpDist[Math.min(jm,5)]||0)+1; }
-      });
-      if (jpT > 0) {
-        var jpAvg = (jpS/jpT).toFixed(2);
-        var jpPerfect = jpDist[5]||0;
-        var jpPpct = Math.round(jpPerfect/jpT*100);
-        var jppc = jpPpct >= 5 ? '#22c55e' : '#facc15';
-        h += '<div class="sr"><div class="sl">Jackpot (5/5 tam tuttu)</div><div class="srr">';
-        h += '<div class="sp" style="color:' + jppc + '">%' + jpPpct + '</div><div class="ss">' + jpPerfect + '/' + jpT + ' tam tuttu</div>';
-        h += '<div class="bar"><div class="bf" style="width:' + Math.min(jpPpct*10,100) + '%;background:' + jppc + '"></div></div></div></div>';
-        h += '<div class="ar"><div class="sl">Jackpot \u2192 ort. kac sayi tuttu</div>';
-        h += '<div style="font-size:16px;font-weight:900;color:#facc15">' + jpAvg + ' / 5</div></div>';
-        h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">JACKPOT DAGILIMI (3+ = \u0130Y\u0130)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
-        for (var _jp=0; _jp<=5; _jp++) {
-          var _jc = _jp>=4?'#22c55e':_jp>=3?'#facc15':'#ef4444';
-          var _jb = _jp>=4?'#22c55e44':_jp>=3?'#facc1544':'#2a2f42';
-          h += '<div style="background:#1e2130;border:1px solid '+_jb+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_jp+'/5: </span><span style="color:'+_jc+';font-weight:800">'+(jpDist[_jp]||0)+'x</span></div>';
-        }
-        h += '</div></div>';
-      }
-
       h += '<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
 
       rows.forEach(function(r) {
@@ -1595,10 +1366,8 @@ function startDashboard() {
         var colorHitR = parseInt(r.color_hit) === 1;
         var firstHitR = parseInt(r.first_hit) === 1;
 
-        var af5raw = r.actual_first5 ? r.actual_first5.split(',').map(Number) : [];
+        var af5  = r.actual_first5 ? r.actual_first5.split(',').map(Number) : [];
         var aAll = r.actual_all    ? r.actual_all.split(',').map(Number)    : [];
-        // Eski kayıtlarda 5 eleman var, all_numbers'dan ilk 6'yı al
-        var af5 = af5raw.length >= 6 ? af5raw : (aAll.length >= 6 ? aAll.slice(0, 6) : af5raw);
         var pf1  = r.pred_first    ? r.pred_first.split(',').map(Number).sort(function(a,b){return a-b;})    : [];
         var pc6  = r.pred_certain6 ? r.pred_certain6.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
         var pc7  = r.pred_certain7 ? r.pred_certain7.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
@@ -1653,7 +1422,7 @@ function startDashboard() {
 
         // Tahmin 5 - ilk sayı
         if (pf1.length > 0) {
-          h += '<div class="lbl">TAHMIN 8 \u2014 1. Sayi Adaylari</div><div class="nr">';
+          h += '<div class="lbl">TAHMIN 5 \u2014 1. Sayi Adaylari</div><div class="nr">';
           pf1.forEach(function(num) {
             var isF = num === parseInt(r.actual_first);
             h += '<div class="nb" style="background:' + (isF?'#14532d':'#1e2130') + ';border:' + (isF?'2px solid #22c55e':'1px solid #3b82f6') + ';color:' + (isF?'#22c55e':'#93c5fd') + '">' + num + '</div>';
@@ -1661,9 +1430,9 @@ function startDashboard() {
           h += '<span style="font-size:11px;color:' + (firstHitR?'#22c55e':'#ef4444') + ';margin-left:6px;font-weight:800">' + (firstHitR?'\u2713 TUTTU':'\u2717 KACTI') + '</span></div>';
         }
 
-        // Gerçek ilk 6
+        // Gerçek ilk 5
         if (af5.length > 0) {
-          h += '<div class="lbl">GERCEK ILK 6</div><div class="nr">';
+          h += '<div class="lbl">GERCEK ILK 5</div><div class="nr">';
           af5.forEach(function(num) {
             h += '<div class="nb" style="background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd">' + num + '</div>';
           });
@@ -1677,7 +1446,7 @@ function startDashboard() {
           pc6.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            // Mavi dolu = ilk 6'da çıktı | Mavi açık = 35'te çıktı | Gri = çıkmadı
+            // Yeşil = ilk 5'te çıktı | Kırmızı/turuncu = 35'te çıktı | Gri = çıkmadı
             var bg  = inIlk5 ? '#0f4a66' : inFull ? '#0c2a3a' : '#2a3040';
             var brd = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#4a5270';
             var cl  = inIlk5 ? '#7dd3fc'  : inFull ? '#38bdf8' : '#aab0c4';
@@ -1685,7 +1454,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 6\'da cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8;border:2px solid #38bdf8;vertical-align:middle"></span> Ilk 5\'te cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0c2a3a;border:2px solid #38bdf8;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
@@ -1723,52 +1492,10 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#14532d;border:1px solid #22c55e;vertical-align:middle"></span> Ilk6\'da cikti</span>';
+          h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#14532d;border:1px solid #22c55e;vertical-align:middle"></span> Ilk5\'te cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1a3a2a;border:1px solid #16a34a;vertical-align:middle"></span> 35 sayida cikti</span>';
           h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3040;border:1px solid #4a5270;vertical-align:middle"></span> Cikmadi</span>';
           h += '</div>';
-        }
-
-        // Jackpot
-        var pJp2 = r.pred_jackpot ? r.pred_jackpot.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
-        var aJp2 = r.actual_jackpot ? r.actual_jackpot.split(',').map(Number) : [];
-        // jackpot_match DB'de yoksa actual_jackpot'tan hesapla
-        var jpM2raw = parseInt(r.jackpot_match);
-        var jpM2;
-        if (jpM2raw >= 0) {
-          jpM2 = jpM2raw;
-        } else if (pJp2.length > 0 && aJp2.length > 0) {
-          jpM2 = aJp2.filter(function(n){ return pJp2.indexOf(n) !== -1; }).length;
-        } else {
-          jpM2 = '-';
-        }
-        if (pJp2.length > 0) {
-          var jpColor = jpM2 !== '-' ? (jpM2 >= 4 ? '#22c55e' : '#facc15') : '#5a6180';
-          var jpLabel = jpM2 !== '-' ? (jpM2 + '/5 tuttu') : 'Bekleniyor';
-          h += '<div class="lbl">JACKPOT TAHMİNİ \u2014 <span style="color:'+jpColor+';font-weight:900">'+jpLabel+'</span></div>';
-          h += '<div class="nr">';
-          pJp2.forEach(function(num) {
-            var inJp = aJp2.indexOf(num) !== -1;
-            var bg  = inJp ? '#3a2000' : '#1e2130';
-            var brd = (jpM2 !== '-' && inJp) ? '#facc15' : '#4a5270';
-            var cl  = (jpM2 !== '-' && inJp) ? '#facc15' : '#aab0c4';
-            h += '<div class="nb" style="background:'+bg+';border:2px solid '+brd+';color:'+cl+'">'+num+'</div>';
-          });
-          h += '</div>';
-          if (aJp2.length > 0) {
-            h += '<div class="lbl" style="margin-top:4px">GERCEK JACKPOT SAYILARI</div><div class="nr">';
-            aJp2.forEach(function(num) {
-              var inPred = pJp2.indexOf(num) !== -1;
-              var brd = inPred ? '#facc15' : '#3a3f52';
-              var cl  = inPred ? '#facc15' : '#5a6180';
-              h += '<div class="nb" style="background:#1e2130;border:2px solid '+brd+';color:'+cl+'">'+num+'</div>';
-            });
-            h += '</div>';
-            h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">';
-            h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3a2000;border:2px solid #facc15;vertical-align:middle"></span> Tuttu</span>';
-            h += '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e2130;border:1px solid #4a5270;vertical-align:middle"></span> Tutmadi</span>';
-            h += '</div>';
-          }
         }
 
         // Özet
@@ -1776,9 +1503,6 @@ function startDashboard() {
         h += '<div class="mc">Kesin 6 \u2192 35 sayi: <strong style="color:' + (c6m>=5?'#22c55e':c6m>=4?'#facc15':'#aab0c4') + '">' + c6m + '/6</strong></div>';
         h += '<div class="mc">Kesin 7 \u2192 35 sayi: <strong style="color:#d4a843">' + c7m + '/7</strong></div>';
         h += '<div class="mc">Kesin 8 \u2192 35 sayi: <strong style="color:' + (c8fm>=6?'#22c55e':c8fm>=4?'#facc15':'#aab0c4') + '">' + c8fm + '/8</strong></div>';
-        if (jpM2 !== '-') {
-          h += '<div class="mc">Jackpot: <strong style="color:' + (jpM2>=4?'#22c55e':jpM2>=3?'#facc15':'#aab0c4') + '">' + jpM2 + '/5</strong></div>';
-        }
         h += '</div></div>';
       });
 
@@ -1858,7 +1582,13 @@ function startDashboard() {
     h += 'var fcrColor=fcr?"#22c55e":"#ef4444";';
     h += 'var fcrLabel=fcr?"GUVENILIR":"ZAYIF";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Ilk Sayi - 8 Aday</span><span style=\'font-size:9px;color:"+fcrColor+";font-weight:800;padding:2px 6px;border:1px solid "+fcrColor+";border-radius:4px\'>"+fcrLabel+"</span></div><div class=\'nums\'>";';
-    h += 'pr.first_candidates.forEach(function(n){h+="<div class=\'num\' style=\'background:#1e3a5f;border:2px solid #3b82f6\'>"+n+"</div>";});';
+    h += 'var CN6={"Sari":[1,9,17,25,33,41],"Yesil":[2,10,18,26,34,42],"Mavi":[3,11,19,27,35,43],"Kirmizi":[4,12,20,28,36,44],"Kahve":[5,13,21,29,37,45],"Turuncu":[6,14,22,30,38,46],"Siyah":[7,15,23,31,39,47],"Mor":[8,16,24,32,40,48]};';
+    h += 'var predClr=(pr.color&&pr.color.pred)||"";var clrNums=CN6[predClr]||[];';
+    h += 'pr.first_candidates.forEach(function(n){';
+    h += 'var inClr=clrNums.indexOf(n)>=0;';
+    h += 'var nbg=inClr?"#1e3a5f":"#1a1f2e";var nbr=inClr?"2px solid #3b82f6":"1px dashed #3a3f52";';
+    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+"\'>"+n+"</div>";';
+    h += '});';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
     h += 'var sig=pr.signals||{};';
@@ -1874,7 +1604,13 @@ function startDashboard() {
     h += 'var c7b=(sig7.badMs77||sig7.c7weak)?"#ef4444":(sig7.sig77>=2||sig7.c7strong)?"#22c55e":sig7.sig77>=1?"#facc15":"#5a6180";';
     h += 'var c7l=(sig7.badMs77||sig7.c7weak)?"ZAYIF":sig7.sig77>=2?"COK GUCLU":sig7.sig77>=1||sig7.c7strong?"GUCLU":"NORMAL";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 7 Sayi</span><span style=\'font-size:9px;color:"+c7b+";font-weight:800;padding:2px 6px;border:1px solid "+c7b+";border-radius:4px\'>"+c7l+"</span></div><div class=\'nums\'>";';
-    h += 'pr.certain7.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a2000;border:1px solid #d4a843;color:#d4a843\'>"+n+"</div>";});';
+    h += 'pr.certain7.forEach(function(n){';
+    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;';
+    h += 'var nbg=in6?"#3a2800":"#2a2800";var nbr=in6?"2px solid #f97316":"2px solid #d4a843";var ntc="#fff";'
+    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+";color:"+ntc+"\'>"+n+"</div>";';
+    h += '});';
+    h += 'h+="</div>";';
+    h += 'h+="<div style=\'margin-top:6px;font-size:10px;color:#aab0c4\'><span style=\'color:#f97316\'>■</span> = Kesin 6da da var</div>";';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
     h += 'var sig8=pr.signals||{};';
@@ -1882,10 +1618,6 @@ function startDashboard() {
     h += 'var c8l=sig8.weakPeriod?"ZAYIF DONEM":sig8.badMs88?"ZAYIF":sig8.sig88>=2?"COK GUCLU":sig8.sig88>=1||sig8.c8strong?"GUCLU":"NORMAL";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 8 Sayi</span><span style=\'font-size:9px;color:"+c8b+";font-weight:800;padding:2px 6px;border:1px solid "+c8b+";border-radius:4px\'>"+c8l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain8.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a3040;border:1px solid #a855f7\'>"+n+"</div>";});';
-    h += 'h+="</div></div>";}';
-    h += 'if(pr&&pr.jackpot&&pr.jackpot.length>0){';
-    h += 'h+="<div class=\'card\' style=\'border-color:#facc1566\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Jackpot Tahmini</span><span style=\'font-size:9px;color:#facc15;font-weight:800;padding:2px 6px;border:1px solid #facc15;border-radius:4px\'>5 SAYI</span></div><div class=\'nums\'>";';
-    h += 'pr.jackpot.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a1f00;border:2px solid #facc15;color:#facc15\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
     h += 'if(d.stats){h+="<div class=\'card\'><div class=\'title\'>Istatistik ("+d.stats.total+" Round)</div>";';
     h += 'h+="<div class=\'str\'><span class=\'over\'>OVER %"+d.stats.over_pct+"</span><span class=\'under\'>UNDER %"+d.stats.under_pct+"</span></div>";';
