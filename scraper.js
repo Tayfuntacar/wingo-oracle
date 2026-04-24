@@ -740,18 +740,41 @@ function predict(draws) {
     else if (msRegime === 'LOW') preferHighBand = false;
   }
 
-  var filtC;
-  if (preferHighBand === true) {
-    filtC = allC.filter(function(x) { return x > 24; });
-  } else if (preferHighBand === false) {
-    filtC = allC.filter(function(x) { return x <= 24; });
-  } else {
-    // Eski davranış: predOU'ya göre filtrele
-    filtC = allC.filter(function(x) { return predOU === 'OVER' ? x > 24 : x <= 24; });
+  // ── FIRST8: %100 kendi renginden geliyor (4315 çekiliş analizi) ──
+  var COLOR_NUMS_FIRST = {
+    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+  };
+  var MS_RENK_FIRST = {
+    '957_Turuncu':30,'956_Mor':32,'957_Mor':40,
+    '958_Siyah':31,'959_Turuncu':30,'958_Mavi':27,'957_Yesil':26
+  };
+  var msRenkFirstKey = predMs + '_' + predColor;
+  var msRenkFirstNum = MS_RENK_FIRST[msRenkFirstKey] || null;
+  var colorNumsFirst = COLOR_NUMS_FIRST[predColor] || [];
+
+  // OU filtresini uygula
+  var filtByOU = colorNumsFirst.filter(function(x){ return predOU==='OVER'?x>24:x<=24; });
+  if (filtByOU.length < 3) filtByOU = colorNumsFirst; // uyuşmazsa tümünü al
+
+  // NS skoruna göre sırala
+  var filtC = filtByOU.slice().sort(function(a,b){ return ns[b]-ns[a]; });
+
+  // MS+Renk sinyali varsa başa al
+  if (msRenkFirstNum) {
+    var mIdx = filtC.indexOf(msRenkFirstNum);
+    if (mIdx > 0) { filtC.splice(mIdx,1); filtC.unshift(msRenkFirstNum); }
+    else if (mIdx === -1) { filtC.unshift(msRenkFirstNum); }
   }
-  if (filtC.length < 5) filtC = allC;
-  result.first_candidates  = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
-  result.first5_candidates = filtC.slice(0, 8).sort(function(a, b) { return a - b; });
+
+  // 8'e tamamla — diğer sayılardan ekle
+  for (var ai=0; filtC.length<8 && ai<allC.length; ai++) {
+    if (filtC.indexOf(allC[ai])===-1) filtC.push(allC[ai]);
+  }
+
+  result.first_candidates  = filtC.slice(0,8).sort(function(a,b){return a-b;});
+  result.first5_candidates = filtC.slice(0,8).sort(function(a,b){return a-b;});
   result.firstColorReliable = firstColorReliable;
 
   // ── SICAK SAYI BONUSU (son 3 turda 3+ kez → %98 sonraki 3 turda gelir) ──
@@ -1246,22 +1269,37 @@ function predict(draws) {
     certain6List.push(certain8List[c6j]);
   }
 
-  // C6: Sadece First8 havuzundan 6 sayı (premium havuz)
-  // Renk+OU sinyali varsa o grubu kullan, yoksa First8'den tekrar oranına göre top 6
+  // ── KESİN 6: Renk+OU > ÖncekiRenk > ms=955/960 > 4yüksek+2orta ──
+  // 4315 çekiliş: ms=955/960 → %16.5, genel 4yüksek+2orta → %13.7
   var specialC6 = RENK_OU_C6[renkOuKey] || PREV_RENK_C6[prevColor||''] || RENK_C6[predColor] || null;
   if (specialC6 && specialC6.length >= 6) {
     result.certain6 = specialC6.slice(0,6).sort(function(a,b){return a-b;});
-  } else {
-    var firstCands = result.first_candidates || [];
-    var firstSorted = firstCands.slice().sort(function(a,b){
-      return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
-    });
-    // First8'den top 6 al, eksikse C8'den tamamla
-    var c6fromFirst = firstSorted.slice(0,6);
-    for (var fi=0; c6fromFirst.length<6 && fi<certain6List.length; fi++) {
-      if (c6fromFirst.indexOf(certain6List[fi]) === -1) c6fromFirst.push(certain6List[fi]);
+  } else if (predMs === 955 || predMs === 960) {
+    // ms=955/960 özel → 4 yüksek + 2 orta band (index 6-7)
+    var ms_c6 = certain8List.slice().sort(function(a,b){return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);});
+    var ms6 = ms_c6.slice(0,4);
+    for (var mc=6; ms6.length<6 && mc<ms_c6.length; mc++) {
+      if (ms6.indexOf(ms_c6[mc])===-1) ms6.push(ms_c6[mc]);
     }
-    result.certain6 = c6fromFirst.sort(function(a,b){return a-b;});
+    var f8s = (result.first_candidates||[]);
+    for (var mc2=0; ms6.length<6 && mc2<f8s.length; mc2++) {
+      if (ms6.indexOf(f8s[mc2])===-1) ms6.push(f8s[mc2]);
+    }
+    result.certain6 = ms6.sort(function(a,b){return a-b;});
+  } else {
+    // Genel: C8+First8 havuzundan 4 yüksek + 2 orta band (index 6-7)
+    var firstCands = result.first_candidates || [];
+    var fullPool = certain8List.slice();
+    firstCands.forEach(function(x){ if(fullPool.indexOf(x)===-1) fullPool.push(x); });
+    var poolSorted = fullPool.slice().sort(function(a,b){return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);});
+    var c6gen = poolSorted.slice(0,4);
+    for (var gi=6; c6gen.length<6 && gi<poolSorted.length; gi++) {
+      if (c6gen.indexOf(poolSorted[gi])===-1) c6gen.push(poolSorted[gi]);
+    }
+    for (var gi2=4; c6gen.length<6 && gi2<poolSorted.length; gi2++) {
+      if (c6gen.indexOf(poolSorted[gi2])===-1) c6gen.push(poolSorted[gi2]);
+    }
+    result.certain6 = c6gen.sort(function(a,b){return a-b;});
   }
   result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
 
@@ -1874,7 +1912,12 @@ function startDashboard() {
     h += 'var c7b=(sig7.badMs77||sig7.c7weak)?"#ef4444":(sig7.sig77>=2||sig7.c7strong)?"#22c55e":sig7.sig77>=1?"#facc15":"#5a6180";';
     h += 'var c7l=(sig7.badMs77||sig7.c7weak)?"ZAYIF":sig7.sig77>=2?"COK GUCLU":sig7.sig77>=1||sig7.c7strong?"GUCLU":"NORMAL";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 7 Sayi</span><span style=\'font-size:9px;color:"+c7b+";font-weight:800;padding:2px 6px;border:1px solid "+c7b+";border-radius:4px\'>"+c7l+"</span></div><div class=\'nums\'>";';
-    h += 'pr.certain7.forEach(function(n){h+="<div class=\'num\' style=\'background:#2a2000;border:1px solid #d4a843;color:#d4a843\'>"+n+"</div>";});';
+    h += 'pr.certain7.forEach(function(n){';
+    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;';
+    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;var nbg=in6?"#3a3000":"#2a2000";var nbr="2px solid #d4a843";'
+    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+"\'>"+ n+"</div>";';
+    h += '});';
+    h += 'h+="<div style=\'margin-top:6px;font-size:10px;color:#aab0c4\'><span style=\'color:#f97316\'>■</span> = Kesin 6da da var</div>";';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
     h += 'var sig8=pr.signals||{};';
