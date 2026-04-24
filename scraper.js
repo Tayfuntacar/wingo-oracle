@@ -1916,10 +1916,10 @@ function startDashboard() {
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 7 Sayi</span><span style=\'font-size:9px;color:"+c7b+";font-weight:800;padding:2px 6px;border:1px solid "+c7b+";border-radius:4px\'>"+c7l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain7.forEach(function(n){';
     h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;';
-    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;var nbg=in6?"#3a3000":"#2a2000";var nbr="2px solid #d4a843";'
-    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+"\'>"+ n+"</div>";';
+    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;var nbg=in6?"#facc15":"#2a2000";var nbr=in6?"2px solid #facc15":"2px solid #d4a843";var ntc=in6?"#1a1200":"#e5c07b";'
+    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+";color:"+ntc+"\'>"+ n+"</div>";';
     h += '});';
-    h += 'h+="<div style=\'margin-top:6px;font-size:10px;color:#aab0c4\'><span style=\'color:#f97316\'>■</span> = Kesin 6da da var</div>";';
+    h += '';
     h += 'h+="</div></div>";}';
     h += 'if(pr&&pr.certain8&&pr.certain8.length>0){';
     h += 'var sig8=pr.signals||{};';
