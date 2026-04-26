@@ -1457,7 +1457,7 @@ function startDashboard() {
   });
 
   app.get('/draws.json', function(req, res) {
-    dbQuery('SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY round ASC')
+    dbQuery('SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round ASC NULLS LAST, created_at ASC')
     .then(function(result) {
       var data = result.rows.map(function(r, i) {
         return { seq: i + 1, round: r.round, first: r.first, ou: r.over_under, color: r.color, numbers: r.all_numbers, ts: r.created_at };
