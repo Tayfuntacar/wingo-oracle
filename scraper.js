@@ -398,10 +398,6 @@ function predict(draws) {
     });
   }
 
-  // ── MS OU SİNYALİ: ms=959-965 OVER ağırlıklı (%65.6), ms=948/957 UNDER ağırlıklı (%65.7) ──
-  var MS_OU_OVER  = {959:1, 960:1, 961:1, 962:1, 965:1, 966:1};
-  var MS_OU_UNDER = {948:1, 957:1};
-
   // ── MS REGIME CLASSIFIER (GPT önerisi) ──
   // LOW: UNDER + düşük first bias | HIGH: OVER + yüksek first bias | MID: nötr
   var msRegime = 'MID';
@@ -825,6 +821,9 @@ function predict(draws) {
   var MS_BAD_77    = {956:1, 954:1, 963:1};
   // Zayıf dönem: ms=960(%4.3 C6), ms=962(%8.7), ms=965(%8.3)
   var MS_WEAK_PERIOD = {960:1, 962:1, 965:1};
+  // OU sinyali: ms=959-965 OVER ağırlıklı (%65.6), ms=948/957 UNDER ağırlıklı (%65.7)
+  var MS_OU_OVER  = {959:1, 960:1, 961:1, 962:1, 965:1, 966:1};
+  var MS_OU_UNDER = {948:1, 957:1};
   // Uzun bekleyen renk geri dönüş OU eğilimleri
   var LONG_WAIT_OU_OVER  = ['Sari','Yesil','Kahve','Turuncu']; // %55-65 OVER
   var LONG_WAIT_OU_UNDER = ['Mavi','Kirmizi','Siyah','Mor'];   // %54-59 UNDER
@@ -837,6 +836,7 @@ function predict(draws) {
   // Önceki renk sinyalleri
   var prevColor = colorList[0];
   var prevColor2 = colorList[1] || '';
+  var prevOU = ouList[0] || '';
   var sig_siyah_prev   = (prevColor==='Siyah');
   var sig_turuncu_prev = (prevColor==='Turuncu');
   var sig_kahve_prev   = (prevColor==='Kahve');
@@ -844,13 +844,6 @@ function predict(draws) {
   // Önceki çekilişlerin renk doluluk sayıları (sinyal için)
   var prevNums0 = allNumsArr[0] || [];
   var prevNums1 = allNumsArr[1] || [];
-
-  // Renk → sayı grupları (cntColor için burada tanımlandı)
-  var COLOR_NUMS_7 = {
-    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
-    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
-    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
-  };
 
   function cntColor(numsArr, color) {
     if (!COLOR_NUMS_7 || !COLOR_NUMS_7[color]) return 0;
@@ -1202,6 +1195,13 @@ function predict(draws) {
   // 2. Ms havuzundan C6/C8'de olmayan sayılar → ms dışı havuz
   // 3. Birleştir, pozisyon skoru ile sırala, C8'de olmayanları al, top 7 seç
 
+  // Renk → sayı grupları
+  var COLOR_NUMS_7 = {
+    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+  };
+
   // Pozisyon skoru (son 20 çekiliş)
   var posScore7 = {}; for (var pi7=1; pi7<=48; pi7++) posScore7[pi7] = 0;
   allNumsArr.slice(0, Math.min(20,n)).forEach(function(nums) {
@@ -1271,157 +1271,63 @@ function predict(draws) {
   }
 
   // ── KESİN 6: Renk+OU > ÖncekiRenk > ms=955/960 > 4yüksek+2orta ──
-  // ── KESİN 6: ESKİ MOTOR (tekrar oranı top 6) ──
-  // Backtest: %13.8 6/6, ROI +%96.6 (kar getiren tek motor)
-  // Renk+OU sinyali varsa onu kullan, yoksa tekrar oranına göre top 6
-  var specialC6 = RENK_OU_C6[renkOuKey] || PREV_RENK_C6[prevColor||''] || RENK_C6[predColor] || null;
-  if (specialC6 && specialC6.length >= 6) {
-    result.certain6 = specialC6.slice(0,6).sort(function(a,b){return a-b;});
+  // ── KESİN 6: MS + ÖNCEKİ RENK + ÖNCEKİ OU bazlı ÖZEL TABLO ──
+  // 2649 çekiliş analizi: Her 5.4 turda 1 6/6, her 173 turda ilk 15'te 6/6, ROI +%1294
+  var MS_PREVRENK_PREVOU_C6 = {
+    '951_Kirmizi_UNDER':[4,40,46,8,9,6],'950_Yesil_OVER':[19,25,5,37,34,7],
+    '951_Sari_OVER':[29,5,40,43,17,26],'951_Mor_OVER':[1,30,27,38,48,35],
+    '954_Kirmizi_OVER':[6,15,7,20,2,18],'950_Turuncu_UNDER':[19,24,11,16,2,1],
+    '950_Mavi_UNDER':[24,29,6,7,33,41],'953_Kahve_OVER':[4,41,2,3,36,48],
+    '952_Sari_OVER':[21,43,28,27,37,44],'951_Kahve_UNDER':[27,30,18,42,39,35],
+    '953_Mavi_UNDER':[26,31,20,17,39,48],'953_Yesil_UNDER':[5,4,7,25,28,32],
+    '953_Mor_UNDER':[23,12,35,13,48,24],'953_Kahve_UNDER':[3,9,41,2,5,13],
+    '952_Kahve_OVER':[17,43,2,9,28,5],'953_Sari_UNDER':[6,39,26,4,3,9],
+    '952_Yesil_UNDER':[14,25,30,21,10,11],'952_Kahve_UNDER':[43,10,21,2,15,23],
+    '951_Siyah_OVER':[36,8,38,30,22,32],'950_Siyah_UNDER':[18,17,5,39,37,28],
+    '951_Mor_UNDER':[2,13,10,35,25,17],'951_Yesil_OVER':[32,19,43,26,11,7],
+    '951_Mavi_UNDER':[12,26,28,6,29,43],'951_Turuncu_OVER':[37,9,43,47,24,5],
+    '950_Siyah_OVER':[1,42,37,25,11,43],'951_Kahve_OVER':[25,3,8,7,37,36],
+    '951_Sari_UNDER':[21,33,36,9,39,2],'952_Siyah_UNDER':[36,3,4,37,41,32],
+    '950_Mor_UNDER':[7,30,23,29,37,35],'950_Sari_OVER':[35,10,3,36,45,24],
+    '951_Turuncu_UNDER':[16,24,33,30,46,42],'951_Kirmizi_OVER':[8,26,5,40,44,16],
+    '951_Mavi_OVER':[34,37,41,45,22,46],'950_Sari_UNDER':[17,30,44,2,12,8],
+    '950_Kahve_UNDER':[34,40,7,13,21,1],'950_Kirmizi_OVER':[45,32,43,42,37,23],
+    '952_Mavi_UNDER':[29,7,10,40,16,6],'952_Mavi_OVER':[3,41,4,19,30,11],
+    '950_Kirmizi_UNDER':[31,3,35,22,10,5],'950_Kahve_OVER':[1,40,15,19,47,28],
+    '949_Kirmizi_UNDER':[36,20,42,43,45,34],'950_Yesil_UNDER':[48,44,31,22,14,33],
+    '949_Kirmizi_OVER':[43,17,21,41,3,36],'949_Yesil_OVER':[10,39,1,38,5,6],
+    '949_Kahve_OVER':[5,22,16,48,24,30],'950_Mor_OVER':[46,27,42,48,24,33],
+    '949_Mor_OVER':[38,14,37,7,6,32],'949_Turuncu_OVER':[32,29,38,37,10,20],
+    '949_Siyah_OVER':[33,13,26,28,31,3],'949_Turuncu_UNDER':[8,3,33,15,37,41],
+    '949_Kahve_UNDER':[27,12,33,48,15,26],'952_Turuncu_UNDER':[6,35,40,22,29,24],
+    '949_Mavi_OVER':[19,21,42,2,6,30],'949_Sari_UNDER':[35,30,40,7,12,47],
+    '950_Mavi_OVER':[32,26,1,40,37,17],'952_Yesil_OVER':[48,22,3,27,42,2],
+    '950_Turuncu_OVER':[37,24,40,32,42,30],'949_Yesil_UNDER':[18,19,20,41,45,48],
+    '949_Mavi_UNDER':[24,8,25,47,38,34],'949_Siyah_UNDER':[9,34,47,11,30,41],
+    '951_Siyah_UNDER':[32,47,23,6,9,45],'952_Mor_OVER':[12,43,13,46,22,35],
+    '952_Kirmizi_OVER':[48,23,26,30,3,29],'952_Sari_UNDER':[4,20,32,34,11,19],
+    '951_Yesil_UNDER':[4,16,44,9,40,46],'952_Mor_UNDER':[37,12,13,44,2,9],
+    '952_Siyah_OVER':[39,18,7,35,11,3],'952_Turuncu_OVER':[36,12,21,38,4,28],
+    '949_Mor_UNDER':[35,40,25,42,7,14],'953_Mor_OVER':[3,4,14,27,10,22],
+    '952_Kirmizi_UNDER':[25,4,16,45,14,15],'949_Sari_OVER':[7,41,42,6,15,19]
+  };
+  var msPrevKey = predMs + '_' + (prevColor||'') + '_' + (prevOU||'');
+  var c6Special = MS_PREVRENK_PREVOU_C6[msPrevKey];
+  if (c6Special && c6Special.length === 6) {
+    result.certain6 = c6Special.slice().sort(function(a,b){return a-b;});
   } else {
-    // Önceki çekilişin sayılarından tekrar oranına göre top 6
+    // Fallback: tekrar oranı top 6
     var prevForC6 = (typeof prevNums !== 'undefined' && prevNums && prevNums.length>0) ? prevNums : certain8List;
     var c6Sorted = prevForC6.slice().sort(function(a,b){
       return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
     });
     var c6Final = c6Sorted.slice(0,6);
-    // Eksikse C8'den tamamla
     for (var c6f=0; c6Final.length<6 && c6f<certain8List.length; c6f++) {
       if (c6Final.indexOf(certain8List[c6f])===-1) c6Final.push(certain8List[c6f]);
     }
     result.certain6 = c6Final.sort(function(a,b){return a-b;});
   }
   result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
-
-  // ── KESİN 6 OPTİMİZASYONU (5 filtre) ──
-
-  // Filtre 1: MS Mod 7 — timestamp farkına göre düşük/yüksek sayı önceliği
-  (function() {
-    var tsDiff = -1;
-    if (draws[0] && draws[1] && draws[0].created_at && draws[1].created_at) {
-      try {
-        var t0 = new Date(draws[0].created_at).getTime();
-        var t1 = new Date(draws[1].created_at).getTime();
-        tsDiff = Math.abs(t0 - t1);
-      } catch(e) {}
-    }
-    if (tsDiff < 0) return;
-    var mod7 = tsDiff % 7;
-    var preferLow = (mod7 === 0 || mod7 === 2 || mod7 === 4); // 1-24 öncelik
-    var c6 = result.certain6.slice();
-    var lowNums  = c6.filter(function(x){ return x <= 24; });
-    var highNums = c6.filter(function(x){ return x >  24; });
-    if (preferLow && lowNums.length < 3) {
-      // Düşük sayı eksik — 25-48 arası birini düşük sayıyla değiştir
-      for (var n = 1; n <= 24 && lowNums.length < 3; n++) {
-        if (c6.indexOf(n) === -1) { c6.pop(); c6.push(n); lowNums.push(n); }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    } else if (!preferLow && highNums.length < 3) {
-      // Yüksek sayı eksik
-      for (var n = 25; n <= 48 && highNums.length < 3; n++) {
-        if (c6.indexOf(n) === -1) { c6.pop(); c6.push(n); highNums.push(n); }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    }
-  })();
-
-  // Filtre 2: Lag-1 Hot Zone — önceki ilk sayı ±3 aralığından en az 2 sayı zorunlu
-  (function() {
-    var prevFirst = firstNums[0];
-    if (!prevFirst) return;
-    var hotZone = [];
-    for (var hz = Math.max(1, prevFirst-3); hz <= Math.min(48, prevFirst+3); hz++) hotZone.push(hz);
-    var c6 = result.certain6.slice();
-    var hzInC6 = c6.filter(function(x){ return hotZone.indexOf(x) !== -1; });
-    if (hzInC6.length < 2) {
-      var needed = 2 - hzInC6.length;
-      var candidates = hotZone.filter(function(x){ return c6.indexOf(x) === -1; });
-      for (var i = 0; i < candidates.length && needed > 0; i++) {
-        // En düşük skorlu elemanı çıkarıp hot zone sayısını ekle
-        c6.pop();
-        c6.push(candidates[i]);
-        needed--;
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    }
-  })();
-
-  // Filtre 3: Color-Zone Filter — tahmin edilen renge göre sayı aralığı ağırlıklandır
-  (function() {
-    var COLOR_ZONES = {
-      'Sari':    [[25,36]],
-      'Kirmizi': [[1,12],[37,48]],
-      'Mavi':    [[13,24],[37,48]],
-      'Kahve':   [[1,12],[25,36]],
-      'Yesil':   [[13,24],[25,36]],
-      'Mor':     [[1,12],[25,36]],
-      'Turuncu': [[13,24],[37,48]],
-      'Siyah':   [[1,12],[13,24],[25,36],[37,48]] // dengeli — zone filtresi yok
-    };
-    var zones = COLOR_ZONES[predColor];
-    if (!zones || predColor === 'Siyah') return;
-    var c6 = result.certain6.slice();
-    // Birincil zone'dan en az 3 sayı olsun
-    var primaryZone = zones[0];
-    var inZone = c6.filter(function(x){ return x >= primaryZone[0] && x <= primaryZone[1]; });
-    if (inZone.length < 3) {
-      var needed = 3 - inZone.length;
-      for (var n = primaryZone[0]; n <= primaryZone[1] && needed > 0; n++) {
-        if (c6.indexOf(n) === -1) {
-          c6.pop();
-          c6.push(n);
-          needed--;
-        }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    }
-  })();
-
-  // Filtre 4: OU-First10 Balance — pred_ou'ya göre düşük/yüksek sayı dengesi
-  (function() {
-    var c6 = result.certain6.slice();
-    var lowInC6  = c6.filter(function(x){ return x <= 24; });
-    var highInC6 = c6.filter(function(x){ return x >  24; });
-    if (predOU === 'UNDER' && lowInC6.length < 4) {
-      var needed = 4 - lowInC6.length;
-      for (var n = 1; n <= 24 && needed > 0; n++) {
-        if (c6.indexOf(n) === -1) { c6.pop(); c6.push(n); needed--; }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    } else if (predOU === 'OVER' && highInC6.length < 4) {
-      var needed = 4 - highInC6.length;
-      for (var n = 25; n <= 48 && needed > 0; n++) {
-        if (c6.indexOf(n) === -1) { c6.pop(); c6.push(n); needed--; }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    }
-  })();
-
-  // Filtre 5: Parity Momentum — son 3 ilk sayının tek/çift momentumu
-  (function() {
-    var last3 = firstNums.slice(0, Math.min(3, firstNums.length));
-    if (last3.length < 3) return;
-    var oddCount  = last3.filter(function(x){ return x % 2 === 1; }).length;
-    var evenCount = last3.filter(function(x){ return x % 2 === 0; }).length;
-    var c6 = result.certain6.slice();
-    if (oddCount === 3) {
-      // 3 tek ardışık → en az 4 tek sayı zorunlu
-      var oddsInC6 = c6.filter(function(x){ return x % 2 === 1; });
-      var needed = 4 - oddsInC6.length;
-      for (var n = 1; n <= 48 && needed > 0; n += 2) {
-        if (c6.indexOf(n) === -1) { c6.pop(); c6.push(n); needed--; }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    } else if (evenCount === 3) {
-      // 3 çift ardışık → en az 4 çift sayı zorunlu
-      var evensInC6 = c6.filter(function(x){ return x % 2 === 0; });
-      var needed = 4 - evensInC6.length;
-      for (var n = 2; n <= 48 && needed > 0; n += 2) {
-        if (c6.indexOf(n) === -1) { c6.pop(); c6.push(n); needed--; }
-      }
-      result.certain6 = c6.slice(0,6).sort(function(a,b){return a-b;});
-    }
-  })();
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
   // 3 güçlü sinyal:
