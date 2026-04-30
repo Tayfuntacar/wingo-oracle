@@ -70,6 +70,8 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS predictions_global_round_idx ON predictions(global_round)');
 }).then(function() {
+  return dbQuery('CREATE TABLE IF NOT EXISTS round_uuids (id SERIAL PRIMARY KEY, round_number INT, round_uuid TEXT, start_datetime TEXT, created_at TIMESTAMP DEFAULT NOW(), UNIQUE(round_number, round_uuid))');
+}).then(function() {
   console.log('Tablolar hazir!');
   return loadCacheFromDB();
 }).then(function() {
@@ -186,6 +188,20 @@ function connect() {
             msgs.forEach(function(msg) {
               try {
                 var j = JSON.parse(msg);
+                // UUID kaydet - ReceiveOfferUpdate
+                if (j.target === 'ReceiveOfferUpdate' && j.arguments && j.arguments[0]) {
+                  var offers = j.arguments[0];
+                  offers.forEach(function(offer) {
+                    var rNum = offer.number;
+                    var rUuid = offer.roundId;
+                    var rStart = offer.startDatetime || '';
+                    dbQuery(
+                      'INSERT INTO round_uuids (round_number, round_uuid, start_datetime) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+                      [rNum, rUuid, rStart]
+                    ).catch(function(e) { console.log('UUID kayit hata:', e.message); });
+                  });
+                  console.log('UUID kaydedildi: ' + offers.length + ' round');
+                }
                 if (j.target === 'ReceivePartialResult' && j.arguments && j.arguments[0] && j.arguments[0].ballNumbers && j.arguments[0].ballNumbers.length === 35) {
                   var a = j.arguments[0];
                   var wsRound = parseInt(a.number);
