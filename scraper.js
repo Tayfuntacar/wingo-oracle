@@ -70,7 +70,9 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS predictions_global_round_idx ON predictions(global_round)');
 }).then(function() {
-  return dbQuery('CREATE TABLE IF NOT EXISTS round_uuids (id SERIAL PRIMARY KEY, round_number INT, round_uuid TEXT, start_datetime TEXT, created_at TIMESTAMP DEFAULT NOW(), UNIQUE(round_number, round_uuid))');
+  return dbQuery('CREATE TABLE IF NOT EXISTS round_uuids (id SERIAL PRIMARY KEY, round_number INT, round_uuid TEXT, start_datetime TEXT, ms_value INT, created_at TIMESTAMP DEFAULT NOW(), UNIQUE(round_number, round_uuid))');
+}).then(function() {
+  return dbQuery('ALTER TABLE round_uuids ADD COLUMN IF NOT EXISTS ms_value INT');
 }).then(function() {
   console.log('Tablolar hazir!');
   return loadCacheFromDB();
@@ -195,9 +197,12 @@ function connect() {
                     var rNum = offer.number;
                     var rUuid = offer.roundId;
                     var rStart = offer.startDatetime || '';
+                    // MS değerini startDatetime'dan çıkar (870463 kısmı)
+                    var msVal = -1;
+                    try { msVal = parseInt(rStart.split('.')[1].replace('Z','').substring(0,3)); } catch(e2) {}
                     dbQuery(
-                      'INSERT INTO round_uuids (round_number, round_uuid, start_datetime) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-                      [rNum, rUuid, rStart]
+                      'INSERT INTO round_uuids (round_number, round_uuid, start_datetime, ms_value) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+                      [rNum, rUuid, rStart, msVal]
                     ).catch(function(e) { console.log('UUID kayit hata:', e.message); });
                   });
                   console.log('UUID kaydedildi: ' + offers.length + ' round');
@@ -1519,6 +1524,18 @@ function startDashboard() {
       res.setHeader('Content-Disposition', 'attachment; filename="predictions.json"');
       res.json(data);
     }).catch(function(e) { res.status(500).json({ error: e.message }); });
+  });
+
+  app.get('/uuids.json', function(req, res) {
+    dbQuery('SELECT round_number, round_uuid, start_datetime, created_at FROM round_uuids ORDER BY round_number ASC')
+    .then(function(result) {
+      var data = result.rows.map(function(r) {
+        return { round: r.round_number, uuid: r.round_uuid, start: r.start_datetime, ms: r.ms_value, ts: r.created_at };
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="uuids.json"');
+      res.json(data);
+    }).catch(function(e) { res.status(500).json({error: e.message}); });
   });
 
   app.get('/rapor', function(req, res) {
