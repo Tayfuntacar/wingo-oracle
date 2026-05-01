@@ -1070,254 +1070,122 @@ function predict(draws) {
   var renkOuKey = (predColor||'') + '_' + (predOU||'');
   var specialC6 = RENK_OU_C6[renkOuKey] || null;
 
-  // ── KESİN 6 + KESİN 8: TEKRAR ORANI + SİNYAL ──
-  // 2414 çekiliş analizi: S8 (3xC8 + 3xC7) en iyi 6/6 = %14.4
-  var prevNums = allNumsArr[0] && allNumsArr[0].length>0 ? allNumsArr[0] : [];
-  var c6Scored = prevNums.slice().sort(function(a,b){return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);});
-
-  // ── MS BAZLI OPTİMAL C8 GRUPLARI (2652 çekiliş analizi) ──
-  var MS_C8 = {
-    951:  [46,28,40,2,47,1,27,11],   // 8/8=%17.3
-    959:  [14,22,2,41,33,34,6,44],   // 8/8=%16.2
-    962:  [11,39,4,8,23,28,1,33],    // 8/8=%20.0
-    964:  [13,48,23,19,40,21,4,47],  // 8/8=%25.0
-    957:  [47,14,25,12,36,39,26,46], // 8/8=%12.8
-    961:  [8,40,24,39,20,28,26,46],  // 8/8=%12.8
-  };
-  // MS+OU bazlı optimal C8
-  var MS_OU_C8 = {
-    '961_OVER':  [8,40,45,43,15,24,3,10],   // 8/8=%45.0
-    '960_UNDER': [47,38,2,5,16,41,24,46],   // 8/8=%35.7
-    '962_OVER':  [43,18,4,23,36,28,46,9],   // 8/8=%31.2
-    '959_UNDER': [22,23,24,35,2,44,18,4],   // 8/8=%27.6
-    '951_OVER':  [8,28,39,10,47,25,40,27],  // 8/8=%25.7
-    '951_UNDER': [46,11,2,3,1,19,40,14],    // 8/8=%25.0
-    '959_OVER':  [14,47,41,2,13,33,22,6],   // 8/8=%15.4
-    '961_UNDER': [20,24,39,38,26,35,2,27],  // 8/8=%15.8
-  };
-  // MS+Renk bazlı optimal C8 (en güçlüler)
-  var MS_RENK_C8 = {
-    '959_Mavi':     [6,35,2,12,13,34,33,44],   // 8/8=%47.4
-    '952_Turuncu':  [15,20,5,24,34,8,30,27],   // 8/8=%40.0
-    '959_Turuncu':  [44,6,12,36,22,42,33,41],  // 8/8=%37.5
-    '958_Sari':     [46,3,29,28,9,12,4,43],    // 8/8=%36.8
-    '958_Yesil':    [5,1,32,21,16,3,19,34],    // 8/8=%35.3
-    '953_Mor':      [43,42,2,17,34,44,13,24],  // 8/8=%34.2
-    '952_Mavi':     [24,12,21,10,47,26,17,30], // 8/8=%33.3
-    '957_Turuncu':  [39,14,12,7,8,29,26,10],   // 8/8=%32.0
-    '952_Kirmizi':  [46,19,24,47,20,9,5,6],    // 8/8=%30.0
-    '957_Sari':     [47,33,41,24,44,12,16,48], // 8/8=%29.6
-    '956_Siyah':    [47,45,11,38,40,46,17,16], // 8/8=%29.0
-    '952_Siyah':    [32,3,14,37,31,9,30,2],    // 8/8=%28.1
-    '957_Kirmizi':  [43,47,3,13,10,4,21,12],   // 8/8=%27.8
-    '954_Mor':      [41,40,8,11,32,26,19,17],  // 8/8=%27.7
-    '957_Siyah':    [39,47,25,44,31,1,15,28],  // 8/8=%27.5
-    '957_Yesil':    [41,9,23,19,42,26,12,47],  // 8/8=%27.3
-    '953_Siyah':    [18,38,5,27,15,23,45,20],  // 8/8=%26.5
-    '955_Turuncu':  [38,48,19,22,1,7,34,2],    // 8/8=%25.4
-    '953_Yesil':    [5,46,14,38,6,2,21,39],    // 8/8=%25.0
-    '952_Sari':     [31,2,17,39,33,48,25,15],  // 8/8=%25.0
-    '956_Sari':     [20,48,9,42,24,46,2,33],   // 8/8=%24.4
-    '956_Yesil':    [43,32,42,10,4,39,6,27],   // 8/8=%24.3
-    '953_Kirmizi':  [43,12,41,23,21,7,42,28],  // 8/8=%24.2
-    '955_Siyah':    [40,23,15,48,47,32,18,3],  // 8/8=%23.3
-    '956_Kahve':    [37,31,22,19,5,10,39,28],  // 8/8=%25.6
-    '954_Mavi':     [31,15,46,19,40,47,4,35],  // 8/8=%21.1
-    '955_Kahve':    [37,29,30,5,2,40,39,45],   // 8/8=%16.4
-    '955_Mavi':     [47,43,40,2,37,5,1,48],    // 8/8=%15.2
-    '954_Sari':     [2,8,23,9,4,38,37,39],     // 8/8=%20.0
-    '954_Siyah':    [11,23,19,7,15,37,28,6],   // 8/8=%19.6
-    '955_Sari':     [11,9,13,41,23,40,19,33],  // 8/8=%18.9
-    '957_Mavi':     [41,27,44,40,25,47,2,1],   // 8/8=%17.6
-    '956_Mor':      [32,9,11,40,48,1,36,45],   // 8/8=%17.6
-    '954_Turuncu':  [33,35,14,34,17,9,5,30],   // 8/8=%16.1
-    '954_Kahve':    [21,8,45,17,12,48,1,29],   // 8/8=%16.1
-    '956_Turuncu':  [8,48,14,38,36,11,35,15],  // 8/8=%16.3
-    '956_Kirmizi':  [3,18,45,8,21,46,41,27],   // 8/8=%21.2
-    '958_Kahve':    [36,22,48,27,5,15,6,13],   // 8/8=%26.1
-    '958_Turuncu':  [46,45,3,14,24,12,6,39],   // 8/8=%20.8
-    '956_Mavi':     [44,19,25,27,15,11,14,4],  // 8/8=%20.8
-    '953_Sari':     [41,16,42,7,40,9,18,37],   // 8/8=%17.8
-    '952_Yesil':    [6,42,30,10,44,22,34,21],  // 8/8=%20.7
-    '955_Kirmizi':  [37,12,45,32,28,16,27,31], // 8/8=%19.6
-    '952_Kahve':    [38,21,18,37,12,22,6,20],  // 8/8=%24.0
-    '952_Mor':      [32,16,9,29,11,27,44,18],  // 8/8=%17.4
-    '958_Mavi':     [23,11,9,43,1,42,22,41],   // 8/8=%27.8
-    '957_Mor':      [46,44,21,6,48,37,31,10],  // 8/8=%21.9
-    '959_Kahve':    [22,14,21,27,45,25,36,33], // 8/8=%21.7
-    '957_Kahve':    [18,27,19,14,23,38,7,37],  // 8/8=%21.7
-  };
-
-  // C8 seçim önceliği: MS+Renk > MS+OU > PrevRenk+MS > MS bazlı > tekrar oranı
-  var msRenkC8Key    = predMs + '_' + (colorList[0]||'');
-  var msOuC8Key      = predMs + '_' + (ouList[0]||'');
-  var prevRenkMsC8Key = (colorList[1]||'') + '_' + predMs;
-
-  // PrevRenk+MS özel grupları
-  var PREV_RENK_MS_C8 = {
-    'Kirmizi_958': [3,46,17,43,6,45,47,38],   // %41.2
-    'Kirmizi_952': [30,26,31,42,20,18,46,1],  // %39.3
-    'Sari_952':    [32,23,14,19,33,17,28,29], // %39.1
-    'Turuncu_957': [2,22,3,14,12,47,19,24],   // %37.5
-    'Kahve_959':   [6,10,2,39,32,14,22,24],   // %36.8
-    'Mor_952':     [36,12,24,42,5,6,32,37],   // %35.3
-    'Kirmizi_959': [11,48,47,35,15,16,7,18],  // %33.3
-    'Siyah_952':   [47,27,21,4,46,17,16,39],  // %31.6
-    'Mor_957':     [44,20,14,37,3,33,8,41],   // %31.2
-    'Mavi_953':    [17,27,46,42,3,37,44,13],  // %31.2
-    'Siyah_958':   [34,35,18,6,24,11,2,46],   // %31.2
-    'Sari_957':    [25,31,26,8,30,39,18,9],   // %28.0
-    'Mavi_959':    [41,26,33,13,11,3,45,17],  // %26.3
-    'Yesil_958':   [23,17,1,41,25,44,42,13],  // %26.1
+  // ── KESİN 6: MS+PrevRenk+PrevOU+CurrRenk → İlk 20'de en sık çıkan 6 sayı ──
+  // 2652 çekiliş: %23.3 6/6 (her 4.3 turda 1), ROI +%307
+  var COMBO4_C6 = {
+    '949_Kahve_UNDER_Mor':[5,8,12,16,31,34],
+    '950_Kahve_OVER_Kirmizi':[4,11,21,1,6,20],
+    '950_Kahve_OVER_Mavi':[12,2,8,7,26,10],
+    '950_Kahve_OVER_Siyah':[25,43,44,12,27,4],
+    '950_Kahve_OVER_Turuncu':[16,38,5,14,22,39],
+    '950_Kahve_OVER_Yesil':[42,3,6,39,5,8],
+    '950_Kahve_UNDER_Mavi':[40,45,3,4,14,41],
+    '950_Kahve_UNDER_Sari':[34,11,31,13,15,35],
+    '950_Kahve_UNDER_Turuncu':[6,43,7,26,28,29],
+    '950_Kirmizi_OVER_Kirmizi':[42,17,19,39,46,4],
+    '950_Kirmizi_OVER_Yesil':[6,25,33,34,9,13],
+    '950_Kirmizi_UNDER_Siyah':[25,3,10,19,20,23],
+    '950_Mavi_OVER_Kahve':[37,2,29,38,40,12],
+    '950_Mavi_OVER_Kirmizi':[39,13,14,20,29,32],
+    '950_Mavi_OVER_Mavi':[21,3,19,26,47,1],
+    '950_Mavi_OVER_Sari':[4,15,25,13,17,19],
+    '950_Mavi_OVER_Yesil':[23,1,4,12,13,39],
+    '950_Mavi_UNDER_Mavi':[35,43,46,30,9,39],
+    '950_Mavi_UNDER_Sari':[12,46,1,3,25,33],
+    '950_Mavi_UNDER_Turuncu':[7,2,3,15,17,19],
+    '950_Mor_OVER_Sari':[20,6,17,19,41,11],
+    '950_Mor_OVER_Turuncu':[20,30,33,46,14,38],
+    '950_Mor_OVER_Yesil':[4,29,31,2,12,14],
+    '950_Mor_UNDER_Kahve':[17,18,31,27,38,11],
+    '950_Mor_UNDER_Mavi':[3,8,15,24,11,22],
+    '950_Mor_UNDER_Sari':[25,1,26,9,12,8],
+    '950_Sari_OVER_Mavi':[3,13,15,35,4,6],
+    '950_Sari_OVER_Siyah':[2,11,14,29,38,40],
+    '950_Sari_OVER_Turuncu':[45,4,14,38,7,10],
+    '950_Sari_OVER_Yesil':[46,42,2,5,6,8],
+    '950_Sari_UNDER_Kahve':[2,13,23,37,40,42],
+    '950_Sari_UNDER_Kirmizi':[28,29,1,17,30,44],
+    '950_Sari_UNDER_Turuncu':[6,4,7,14,19,45],
+    '950_Siyah_OVER_Kahve':[10,30,37,39,45,16],
+    '950_Siyah_OVER_Kirmizi':[28,5,10,15,33,45],
+    '950_Siyah_OVER_Mavi':[5,11,20,35,36,13],
+    '950_Siyah_UNDER_Mor':[16,9,14,44,1,15],
+    '950_Siyah_UNDER_Sari':[17,39,9,13,41,46],
+    '950_Siyah_UNDER_Yesil':[3,26,42,47,2,14],
+    '950_Turuncu_OVER_Kahve':[2,33,9,11,18,13],
+    '950_Turuncu_OVER_Kirmizi':[5,1,12,42,14,36],
+    '950_Turuncu_OVER_Mor':[21,41,10,29,37,3],
+    '950_Turuncu_OVER_Sari':[16,26,47,9,36,41],
+    '950_Turuncu_UNDER_Mavi':[46,3,2,16,25,1],
+    '950_Turuncu_UNDER_Turuncu':[5,41,17,37,38,45],
+    '950_Turuncu_UNDER_Yesil':[18,33,37,38,2,9],
+    '950_Yesil_OVER_Mavi':[5,27,44,48,11,19],
+    '950_Yesil_OVER_Mor':[5,16,28,38,2,3],
+    '950_Yesil_OVER_Sari':[39,36,1,6,7,9],
+    '950_Yesil_OVER_Turuncu':[20,5,6,16,18,21],
+    '950_Yesil_UNDER_Mavi':[21,32,36,6,8,16],
+    '950_Yesil_UNDER_Sari':[23,5,7,25,27,28],
+    '950_Yesil_UNDER_Siyah':[14,27,13,17,31,40],
+    '950_Yesil_UNDER_Turuncu':[17,18,9,11,44,3],
+    '950_Yesil_UNDER_Yesil':[31,46,16,21,24,30],
+    '951_Kahve_OVER_Sari':[25,19,26,42,43,3],
+    '951_Kahve_OVER_Siyah':[14,29,44,48,12,15],
+    '951_Kahve_UNDER_Mavi':[35,28,34,4,5,9],
+    '951_Kirmizi_OVER_Kahve':[15,29,1,3,10,11],
+    '951_Kirmizi_OVER_Turuncu':[7,19,38,41,44,45],
+    '951_Kirmizi_OVER_Yesil':[48,31,42,15,20,21],
+    '951_Kirmizi_UNDER_Mavi':[28,3,11,19,30,41],
+    '951_Mavi_UNDER_Mavi':[3,6,17,4,11,16],
+    '951_Mavi_UNDER_Mor':[14,12,16,24,32,2],
+    '951_Mor_UNDER_Turuncu':[6,33,22,28,34,39],
+    '951_Sari_OVER_Kahve':[43,37,5,6,8,13],
+    '951_Sari_OVER_Kirmizi':[24,15,40,41,42,44],
+    '951_Sari_OVER_Mavi':[8,11,24,27,30,35],
+    '951_Sari_OVER_Siyah':[33,35,39,7,31,15],
+    '951_Sari_UNDER_Turuncu':[7,15,6,14,23,27],
+    '951_Sari_UNDER_Yesil':[4,27,22,23,30,34],
+    '951_Siyah_OVER_Sari':[17,31,1,16,18,38],
+    '951_Siyah_UNDER_Turuncu':[7,2,38,25,46,47],
+    '951_Siyah_UNDER_Yesil':[24,33,1,18,2,28],
+    '951_Turuncu_OVER_Kahve':[45,14,25,31,1,3],
+    '951_Turuncu_OVER_Kirmizi':[16,35,36,39,4,26],
+    '951_Turuncu_OVER_Siyah':[7,10,40,1,2,21],
+    '951_Turuncu_UNDER_Siyah':[21,33,5,31,6,15],
+    '951_Turuncu_UNDER_Turuncu':[31,16,18,25,43,2],
+    '952_Siyah_OVER_Mavi':[3,27,33,36,4,8]
   };
 
-  var specialC8 = MS_RENK_C8[msRenkC8Key] || MS_OU_C8[msOuC8Key] || PREV_RENK_MS_C8[prevRenkMsC8Key] || MS_C8[predMs] || null;
+  var MS_RENK_ILK20_C6 = {
+    '949_Kahve':[5,42,29,44,15,16],'949_Kirmizi':[35,36,23,44,25,6],
+    '949_Mavi':[27,35,37,3,44,45],'949_Mor':[48,16,1,11,24,37],
+    '949_Sari':[41,9,11,17,25,15],'949_Siyah':[31,17,38,12,37,42],
+    '949_Turuncu':[6,21,22,4,30,32],'949_Yesil':[41,42,1,2,10,47],
+    '950_Kahve':[37,2,21,13,18,45],'950_Kirmizi':[44,4,28,29,41,36],
+    '950_Mavi':[35,19,41,3,11,43],'950_Mor':[16,32,40,3,8,28],
+    '950_Sari':[41,17,25,1,33,9],'950_Siyah':[31,11,13,14,27,33],
+    '950_Turuncu':[38,14,30,46,45,6],'950_Yesil':[42,6,18,34,25,14],
+    '951_Kahve':[5,13,29,31,37,22],'951_Kirmizi':[28,44,4,36,42,11],
+    '951_Mavi':[3,35,27,8,41,43],'951_Mor':[24,32,16,40,8,43],
+    '951_Sari':[25,38,9,33,41,46],'951_Siyah':[39,27,35,15,31,47],
+    '951_Turuncu':[30,6,46,38,7,22],'951_Yesil':[18,10,28,2,27,34],
+    '952_Kahve':[21,13,37,45,3,31],'952_Kirmizi':[20,14,10,3,36,5],
+    '952_Mavi':[3,43,27,47,35,36],'952_Mor':[40,24,6,32,8,25],
+    '952_Sari':[25,41,35,33,1,6],'952_Siyah':[13,39,7,47,31,38],
+    '952_Turuncu':[30,13,22,38,5,14],'952_Yesil':[30,10,26,36,21,27],
+    '953_Kahve':[13,38,45,3,16,30],'953_Kirmizi':[12,36,40,3,4,8],
+    '953_Mor':[32,48,43,22,3,21],'953_Siyah':[28,31,34,41,3,4],
+    '953_Turuncu':[46,28,15,22,38,21],'953_Yesil':[2,45,46,18,20,21]
+  };
 
-  var certain8List;
-  if (specialC8 && specialC8.length === 8) {
-    certain8List = specialC8.slice();
+  // C6 seçim: 4 parametre önce, fallback MS+Renk
+  var prevOU4 = ouList[0] || '';
+  var combo4Key = predMs + '_' + (prevColor||'') + '_' + prevOU4 + '_' + predColor;
+  var msRenkKey20 = predMs + '_' + predColor;
+  var c6Result = COMBO4_C6[combo4Key] || MS_RENK_ILK20_C6[msRenkKey20] || null;
+
+  if (c6Result && c6Result.length === 6) {
+    result.certain6 = c6Result.slice().sort(function(a,b){return a-b;});
   } else {
-    // ── CLUSTER LİMİT (GPT önerisi): aynı renk grubundan max 3 sayı ──
-    var c8Base = c6Scored.slice(0, 8);
-    var colorGroupCount = {};
-    var c8WithLimit = [];
-    c8Base.forEach(function(num) {
-      var numColor = colors[num] || 'X';
-      colorGroupCount[numColor] = (colorGroupCount[numColor] || 0) + 1;
-      if (colorGroupCount[numColor] <= 3) {
-        c8WithLimit.push(num);
-      }
-    });
-    // Eksik kalırsa clusterSorted'dan tamamla (limitli)
-    for (var cli = 0; c8WithLimit.length < 8 && cli < clusterSorted.length; cli++) {
-      var cn = clusterSorted[cli];
-      if (c8WithLimit.indexOf(cn) === -1) {
-        var cnColor = colors[cn] || 'X';
-        colorGroupCount[cnColor] = (colorGroupCount[cnColor] || 0);
-        if (colorGroupCount[cnColor] < 3) {
-          colorGroupCount[cnColor]++;
-          c8WithLimit.push(cn);
-        }
-      }
-    }
-    // Hala eksikse limit olmadan tamamla
-    for (var cli2 = 0; c8WithLimit.length < 8 && cli2 < c6Scored.length; cli2++) {
-      if (c8WithLimit.indexOf(c6Scored[cli2]) === -1) c8WithLimit.push(c6Scored[cli2]);
-    }
-    certain8List = c8WithLimit.slice(0, 8);
-  }
-  result.certain8 = certain8List.slice().sort(function(a,b){return a-b;});
-
-  // ── KESİN 7: AZ ÇIKAN RENK + MS DIŞI SAYILAR ──
-  // Strateji (1470 çekiliş test): ort=5.129, 6+=%39.0, 7/7=%10.4
-  // C8 ile %100 farklı sayılar — hiç örtüşme yok
-  //
-  // 1. Önceki çekilişte ≤2 sayı çıkan renklerin tüm 6 sayısı → az renk havuzu
-  // 2. Ms havuzundan C6/C8'de olmayan sayılar → ms dışı havuz
-  // 3. Birleştir, pozisyon skoru ile sırala, C8'de olmayanları al, top 7 seç
-
-  // Renk → sayı grupları
-  var COLOR_NUMS_7 = {
-    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
-    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
-    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
-  };
-
-  // Pozisyon skoru (son 20 çekiliş)
-  var posScore7 = {}; for (var pi7=1; pi7<=48; pi7++) posScore7[pi7] = 0;
-  allNumsArr.slice(0, Math.min(20,n)).forEach(function(nums) {
-    nums.slice(0,5).forEach(function(num, pos) { posScore7[num] = (posScore7[num]||0) + (5-pos); });
-  });
-
-  // C8 seti
-  var c8Set = {};
-  certain8List.forEach(function(x){ c8Set[x] = 1; });
-
-  // 1. Az çıkan renk sayıları (önceki çekilişte ≤2 sayı çıkan renklerin tüm 6 sayısı)
-  var lowColorNums7 = {};
-  var prevSet7 = {}; prevNums.forEach(function(x){ prevSet7[x]=1; });
-  ALL_COLORS.forEach(function(color) {
-    if (!COLOR_NUMS_7[color]) return;
-    var cnt = COLOR_NUMS_7[color].filter(function(x){ return prevSet7[x]; }).length;
-    if (cnt <= 2) {
-      COLOR_NUMS_7[color].forEach(function(x){ lowColorNums7[x] = 1; });
-    }
-  });
-
-  // 2. Ms havuzundan C8'de olmayan sayılar
-  var msExtra7 = {};
-  if (predMs >= 0 && MS_FIRST_POOL[predMs]) {
-    MS_FIRST_POOL[predMs].slice(0,10).forEach(function(num) {
-      if (!c8Set[num]) msExtra7[num] = 1;
-    });
-  }
-
-  // 3. Öncelikli havuz = az renk + ms dışı (C8 haricinde)
-  var priority7 = {};
-  Object.keys(lowColorNums7).forEach(function(x){ if (!c8Set[x]) priority7[x]=1; });
-  Object.keys(msExtra7).forEach(function(x){ priority7[x]=1; });
-
-  // 4. Sırala: önce öncelikli, sonra geri kalanlar (hepsi C8 haricinde)
-  var sorted7 = [];
-  // Öncelikli olanlar - pozisyon skoruna göre
-  var pri_arr = Object.keys(priority7).map(Number).sort(function(a,b){ return posScore7[b]-posScore7[a]; });
-  // Geri kalanlar
-  var rest_arr = [];
-  for (var ri7=1; ri7<=48; ri7++) {
-    if (!c8Set[ri7] && !priority7[ri7]) rest_arr.push(ri7);
-  }
-  rest_arr.sort(function(a,b){ return posScore7[b]-posScore7[a]; });
-  sorted7 = pri_arr.concat(rest_arr);
-
-  // C7 seçim önceliği: Renk çifti > Renk+OU > Mevcut motor
-  var pairC7Key = (prevColor||'') + '_' + (predColor||'');
-  var specialC7 = PAIR_C7[pairC7Key] || RENK_OU_C7[renkOuKey] || null;
-  // OVER+Siyah C7 grubunu kaldır — gerçek veri düşük (%4.8)
-  if (specialC7 && specialC7.length >= 7) {
-    result.certain7 = specialC7.slice(0,7).sort(function(a,b){return a-b;});
-  } else {
-    result.certain7 = sorted7.slice(0,7).sort(function(a,b){return a-b;});
-  }
-
-  // ── KESİN 6: C8'den 3 + C7'den 3 (büyük-küçük karışık) ──
-  var c8Set = {};
-  certain8List.forEach(function(x){ c8Set[x] = 1; });
-  var c7Only = result.certain7.filter(function(x){ return !c8Set[x]; });
-
-  // C8'den ilk 3 + C7'den ilk 3 (her ikisi kendi motorunun sıralamasına göre)
-  var certain6List = certain8List.slice(0,3).concat(c7Only.slice(0,3));
-  // Eğer C7'den 3 bulunamazsa C8'den tamamla
-  for (var c6j=3; certain6List.length<6 && c6j<certain8List.length; c6j++) {
-    certain6List.push(certain8List[c6j]);
-  }
-
-  // ── KESİN 6: MS+Renk → İlk 15'e en çok giren sayılar (6200+ çekiliş) ──
-  // Backtest: %17.9 6/6, ROI +%299.8, ilk 20'de biten %5.9
-  var ILK15_MS_RENK_C6 = {
-    '949_Kahve':[29,6,21,2,44,13],'949_Kirmizi':[4,35,44,8,23,6],
-    '949_Mavi':[35,27,48,9,11,28],'949_Mor':[48,1,32,24,25,39],
-    '949_Sari':[41,9,25,17,32,42],'949_Siyah':[31,12,27,42,47,1],
-    '949_Turuncu':[6,22,21,30,8,37],'949_Yesil':[2,41,40,42,1,13],
-    '950_Kahve':[37,21,45,2,13,1],'950_Kirmizi':[44,4,28,1,30,24],
-    '950_Mavi':[35,19,41,43,3,11],'950_Mor':[16,40,8,32,26,20],
-    '950_Sari':[17,9,25,1,30,41],'950_Siyah':[31,39,23,27,30,14],
-    '950_Turuncu':[38,30,6,14,46,28],'950_Yesil':[42,18,34,2,26,14],
-    '951_Kahve':[29,13,5,28,37,12],'951_Kirmizi':[28,4,6,31,12,8],
-    '951_Mavi':[27,3,35,19,43,16],'951_Mor':[32,24,40,8,43,16],
-    '951_Sari':[33,25,9,17,26,35],'951_Siyah':[39,15,31,1,7,47],
-    '951_Turuncu':[6,30,46,38,41,7],'951_Yesil':[34,10,2,18,28,42],
-    '952_Kahve':[21,13,12,29,37,20],'952_Kirmizi':[6,20,29,43,14,36],
-    '952_Mavi':[43,27,35,3,47,11],'952_Mor':[24,32,40,8,21,12],
-    '952_Sari':[25,41,17,35,6,1],'952_Siyah':[31,39,7,1,47,17],
-    '952_Turuncu':[30,14,22,37,38,46],'952_Yesil':[10,29,4,23,30,34],
-    '953_Kahve':[45,13,43,31,3,11],'953_Mor':[48,32,40,1,8,3]
-  };
-  var msRenkC6Key = predMs + '_' + predColor;
-  var c6Special = ILK15_MS_RENK_C6[msRenkC6Key];
-  if (c6Special && c6Special.length === 6) {
-    result.certain6 = c6Special.slice().sort(function(a,b){return a-b;});
-  } else {
-    // Fallback: önceki çekilişten tekrar oranı top 6
     var prevForC6 = (typeof prevNums !== 'undefined' && prevNums && prevNums.length>0) ? prevNums : certain8List;
     var c6Sorted = prevForC6.slice().sort(function(a,b){
       return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
@@ -1328,6 +1196,7 @@ function predict(draws) {
     }
     result.certain6 = c6Final.sort(function(a,b){return a-b;});
   }
+
   result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
