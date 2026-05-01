@@ -1068,7 +1068,6 @@ function predict(draws) {
     'Mor_Kahve':     [4,6,11,39,42,46,47],  // %14.3 7/7
   };
   var renkOuKey = (predColor||'') + '_' + (predOU||'');
-  var specialC6 = RENK_OU_C6[renkOuKey] || null;
 
   // ── KESİN 6: MS+PrevRenk+PrevOU+CurrRenk → İlk 20'de en sık çıkan 6 sayı ──
   // 2652 çekiliş: %23.3 6/6 (her 4.3 turda 1), ROI +%307
