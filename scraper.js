@@ -259,7 +259,7 @@ function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
 }
 
 function updatePredictions(round, first, first5, allNums, ou, renk) {
-  dbQuery('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7 FROM predictions WHERE round = $1', [round])
+  dbQuery('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7, pred_jackpot FROM predictions WHERE round = $1', [round])
   .then(function(res) {
     if (res.rows.length === 0) { console.log('Round ' + round + ' icin bekleyen tahmin yok.'); return; }
     res.rows.forEach(function(row) {
@@ -1258,6 +1258,12 @@ function startDashboard() {
       var total = parseInt(r[1].rows[0].total) || 0;
       var oc    = parseInt(r[1].rows[0].over_count) || 0;
       var op    = total > 0 ? Math.round(oc / total * 100) : 50;
+      if (r[0].rows.length >= 10) {
+        try {
+          var freshPred = predict(r[0].rows);
+          if (freshPred && freshPred.over_under) globalPredCache = freshPred;
+        } catch(e) { console.log('predict hatasi:', e.message); }
+      }
       if (!res.headersSent) res.json({ last200: r[0].rows, stats: { total: total, over_pct: op, under_pct: 100 - op }, predictions: globalPredCache });
     }).catch(function(e) { clearTimeout(timer); if (!res.headersSent) res.json({ error: e.message }); });
   });
