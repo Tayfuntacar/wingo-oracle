@@ -1,10 +1,11 @@
+require('dotenv').config();
 var WebSocket = require('ws');
 var https = require('https');
 var express = require('express');
 var cors = require('cors');
 var { Client } = require('pg');
 
-var DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:LqxXVFqCIrOqDMmNmsSSOvCGLUkvEtsL@junction.proxy.rlwy.net:43663/railway';
+var DB_URL = process.env.DATABASE_URL || 'postgresql://wingo:wingo2026@localhost:5432/wingodb';
 
 var colors = {1:'Sari',9:'Sari',17:'Sari',25:'Sari',33:'Sari',41:'Sari',2:'Yesil',10:'Yesil',18:'Yesil',26:'Yesil',34:'Yesil',42:'Yesil',3:'Mavi',11:'Mavi',19:'Mavi',27:'Mavi',35:'Mavi',43:'Mavi',4:'Kirmizi',12:'Kirmizi',20:'Kirmizi',28:'Kirmizi',36:'Kirmizi',44:'Kirmizi',5:'Kahve',13:'Kahve',21:'Kahve',29:'Kahve',37:'Kahve',45:'Kahve',6:'Turuncu',14:'Turuncu',22:'Turuncu',30:'Turuncu',38:'Turuncu',46:'Turuncu',7:'Siyah',15:'Siyah',23:'Siyah',31:'Siyah',39:'Siyah',47:'Siyah',8:'Mor',16:'Mor',24:'Mor',32:'Mor',40:'Mor',48:'Mor'};
 var ALL_COLORS = ['Sari','Yesil','Mavi','Kirmizi','Kahve','Turuncu','Siyah','Mor'];
@@ -865,6 +866,12 @@ function predict(draws) {
   // Önceki çekilişlerin renk doluluk sayıları (sinyal için)
   var prevNums0 = allNumsArr[0] || [];
   var prevNums1 = allNumsArr[1] || [];
+
+  var COLOR_NUMS_7 = {
+    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+  };
 
   function cntColor(numsArr, color) {
     if (!COLOR_NUMS_7 || !COLOR_NUMS_7[color]) return 0;
