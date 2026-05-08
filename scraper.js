@@ -10,7 +10,7 @@ var colors = {1:'Sari',9:'Sari',17:'Sari',25:'Sari',33:'Sari',41:'Sari',2:'Yesil
 var ALL_COLORS = ['Sari','Yesil','Mavi','Kirmizi','Kahve','Turuncu','Siyah','Mor'];
 var COLOR_HEX = {'Sari':'#facc15','Yesil':'#22c55e','Mavi':'#3b82f6','Kirmizi':'#ef4444','Kahve':'#d97706','Turuncu':'#f97316','Siyah':'#9ca3af','Mor':'#a855f7'};
 
-var db = new Client({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+var db = new Client({ connectionString: DB_URL });
 var lastProcessedWsRound = -1;
 var globalPredCache = {};
 
