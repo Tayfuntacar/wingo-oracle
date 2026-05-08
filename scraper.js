@@ -1292,63 +1292,76 @@ function predict(draws) {
     certain6List.push(certain8List[c6j]);
   }
 
-  // ── KESİN 6: Renk+OU > ÖncekiRenk > ms=955/960 > 4yüksek+2orta ──
-  // ── KESİN 6: MS + ÖNCEKİ RENK + ÖNCEKİ OU bazlı ÖZEL TABLO ──
-  // 2649 çekiliş analizi: Her 5.4 turda 1 6/6, her 173 turda ilk 15'te 6/6, ROI +%1294
-  var MS_PREVRENK_PREVOU_C6 = {
-    '951_Kirmizi_UNDER':[4,40,46,8,9,6],'950_Yesil_OVER':[19,25,5,37,34,7],
-    '951_Sari_OVER':[29,5,40,43,17,26],'951_Mor_OVER':[1,30,27,38,48,35],
-    '954_Kirmizi_OVER':[6,15,7,20,2,18],'950_Turuncu_UNDER':[19,24,11,16,2,1],
-    '950_Mavi_UNDER':[24,29,6,7,33,41],'953_Kahve_OVER':[4,41,2,3,36,48],
-    '952_Sari_OVER':[21,43,28,27,37,44],'951_Kahve_UNDER':[27,30,18,42,39,35],
-    '953_Mavi_UNDER':[26,31,20,17,39,48],'953_Yesil_UNDER':[5,4,7,25,28,32],
-    '953_Mor_UNDER':[23,12,35,13,48,24],'953_Kahve_UNDER':[3,9,41,2,5,13],
-    '952_Kahve_OVER':[17,43,2,9,28,5],'953_Sari_UNDER':[6,39,26,4,3,9],
-    '952_Yesil_UNDER':[14,25,30,21,10,11],'952_Kahve_UNDER':[43,10,21,2,15,23],
-    '951_Siyah_OVER':[36,8,38,30,22,32],'950_Siyah_UNDER':[18,17,5,39,37,28],
-    '951_Mor_UNDER':[2,13,10,35,25,17],'951_Yesil_OVER':[32,19,43,26,11,7],
-    '951_Mavi_UNDER':[12,26,28,6,29,43],'951_Turuncu_OVER':[37,9,43,47,24,5],
-    '950_Siyah_OVER':[1,42,37,25,11,43],'951_Kahve_OVER':[25,3,8,7,37,36],
-    '951_Sari_UNDER':[21,33,36,9,39,2],'952_Siyah_UNDER':[36,3,4,37,41,32],
-    '950_Mor_UNDER':[7,30,23,29,37,35],'950_Sari_OVER':[35,10,3,36,45,24],
-    '951_Turuncu_UNDER':[16,24,33,30,46,42],'951_Kirmizi_OVER':[8,26,5,40,44,16],
-    '951_Mavi_OVER':[34,37,41,45,22,46],'950_Sari_UNDER':[17,30,44,2,12,8],
-    '950_Kahve_UNDER':[34,40,7,13,21,1],'950_Kirmizi_OVER':[45,32,43,42,37,23],
-    '952_Mavi_UNDER':[29,7,10,40,16,6],'952_Mavi_OVER':[3,41,4,19,30,11],
-    '950_Kirmizi_UNDER':[31,3,35,22,10,5],'950_Kahve_OVER':[1,40,15,19,47,28],
-    '949_Kirmizi_UNDER':[36,20,42,43,45,34],'950_Yesil_UNDER':[48,44,31,22,14,33],
-    '949_Kirmizi_OVER':[43,17,21,41,3,36],'949_Yesil_OVER':[10,39,1,38,5,6],
-    '949_Kahve_OVER':[5,22,16,48,24,30],'950_Mor_OVER':[46,27,42,48,24,33],
-    '949_Mor_OVER':[38,14,37,7,6,32],'949_Turuncu_OVER':[32,29,38,37,10,20],
-    '949_Siyah_OVER':[33,13,26,28,31,3],'949_Turuncu_UNDER':[8,3,33,15,37,41],
-    '949_Kahve_UNDER':[27,12,33,48,15,26],'952_Turuncu_UNDER':[6,35,40,22,29,24],
-    '949_Mavi_OVER':[19,21,42,2,6,30],'949_Sari_UNDER':[35,30,40,7,12,47],
-    '950_Mavi_OVER':[32,26,1,40,37,17],'952_Yesil_OVER':[48,22,3,27,42,2],
-    '950_Turuncu_OVER':[37,24,40,32,42,30],'949_Yesil_UNDER':[18,19,20,41,45,48],
-    '949_Mavi_UNDER':[24,8,25,47,38,34],'949_Siyah_UNDER':[9,34,47,11,30,41],
-    '951_Siyah_UNDER':[32,47,23,6,9,45],'952_Mor_OVER':[12,43,13,46,22,35],
-    '952_Kirmizi_OVER':[48,23,26,30,3,29],'952_Sari_UNDER':[4,20,32,34,11,19],
-    '951_Yesil_UNDER':[4,16,44,9,40,46],'952_Mor_UNDER':[37,12,13,44,2,9],
-    '952_Siyah_OVER':[39,18,7,35,11,3],'952_Turuncu_OVER':[36,12,21,38,4,28],
-    '949_Mor_UNDER':[35,40,25,42,7,14],'953_Mor_OVER':[3,4,14,27,10,22],
-    '952_Kirmizi_UNDER':[25,4,16,45,14,15],'949_Sari_OVER':[7,41,42,6,15,19]
-  };
-  var msPrevKey = predMs + '_' + (prevColor||'') + '_' + (prevOU||'');
-  var c6Special = MS_PREVRENK_PREVOU_C6[msPrevKey];
-  if (c6Special && c6Special.length === 6) {
-    result.certain6 = c6Special.slice().sort(function(a,b){return a-b;});
-  } else {
-    // Fallback: tekrar oranı top 6
-    var prevForC6 = (typeof prevNums !== 'undefined' && prevNums && prevNums.length>0) ? prevNums : certain8List;
-    var c6Sorted = prevForC6.slice().sort(function(a,b){
-      return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
+  // ── KESİN 6: DİNAMİK MOTOR ──
+  // Son 30 çekilişte soğuk sayılar + önceki çekiliş tekrar oranı + MS+Renk bonusu
+  (function() {
+    var dynScores = {};
+    for (var ds=1; ds<=48; ds++) dynScores[ds] = 0;
+
+    // 1. Soğuk skor: son 30 çekilişte ilk 15'te az görülen sayılar
+    var recentAll = allNumsArr.slice(0, Math.min(30, n));
+    var coldFreq = {};
+    for (var ds2=1; ds2<=48; ds2++) coldFreq[ds2] = 0;
+    recentAll.forEach(function(nums) {
+      nums.slice(0,15).forEach(function(num) { coldFreq[num]++; });
     });
-    var c6Final = c6Sorted.slice(0,6);
-    for (var c6f=0; c6Final.length<6 && c6f<certain8List.length; c6f++) {
-      if (c6Final.indexOf(certain8List[c6f])===-1) c6Final.push(certain8List[c6f]);
+    for (var ds3=1; ds3<=48; ds3++) {
+      dynScores[ds3] += (30 - (coldFreq[ds3]||0)) * 4; // az görülene yüksek skor
     }
-    result.certain6 = c6Final.sort(function(a,b){return a-b;});
-  }
+
+    // 2. Önceki çekilişin sayıları: tekrar oranı yüksek olanları öne al
+    var REPEAT_BONUS = {
+      39:76,6:75,43:75,40:75,47:74,35:74,19:74,41:74,18:74,46:74,
+      38:73,2:73,30:73,14:73,27:72,32:72,16:72,8:72,13:72,42:72
+    };
+    if (prevNums && prevNums.length > 0) {
+      prevNums.forEach(function(num) {
+        dynScores[num] += (REPEAT_BONUS[num] || 70);
+      });
+    }
+
+    // 3. MS + önceki renk bonusu (güçlü sinyaller)
+    var MS_RENK_BONUS_DYN = {
+      '955_Siyah':[47],'956_Sari':[20,42],'952_Siyah':[9,23,32],
+      '953_Yesil':[38],'957_Siyah':[32,47],'956_Mor':[32],
+      '954_Mor':[26],'956_Yesil':[30],'953_Siyah':[15],
+      '958_Kahve':[36],'957_Sari':[47],'959_Turuncu':[44],
+      '958_Mavi':[23],'958_Kirmizi':[23]
+    };
+    var msRenkDynKey = predMs + '_' + (prevColor||'');
+    var msRenkDynNums = MS_RENK_BONUS_DYN[msRenkDynKey] || [];
+    msRenkDynNums.forEach(function(num) { dynScores[num] += 60; });
+
+    // 4. MS+MS geçiş bonusu
+    var MS_MS_DYN = {
+      '957_955':[37],'958_959':[6],'958_955':[21,48],
+      '954_957':[9],'959_955':[31],'959_960':[13],
+      '956_952':[7],'953_957':[2],'951_952':[25],'958_958':[43]
+    };
+    var msMsDynKey = lastMs + '_' + predMs;
+    (MS_MS_DYN[msMsDynKey]||[]).forEach(function(num) { dynScores[num] += 70; });
+
+    // 5. Renk çifti bonusu
+    var COLOR_PAIR_DYN = {
+      'Turuncu_Siyah':[25],'Siyah_Mor':[24],'Kirmizi_Siyah':[15],
+      'Turuncu_Kirmizi':[22],'Siyah_Siyah':[5],'Mor_Yesil':[12],'Yesil_Mor':[11]
+    };
+    var pairDynKey = (prevColor1||'') + '_' + (prevColor0||'');
+    (COLOR_PAIR_DYN[pairDynKey]||[]).forEach(function(num) { dynScores[num] += 50; });
+
+    // 6. Önceki çekilişte HİÇ çıkmayan sayılara ekstra bonus (tam soğuk)
+    var prevSet = {};
+    (prevNums||[]).forEach(function(x){ prevSet[x]=1; });
+    for (var ds4=1; ds4<=48; ds4++) {
+      if (!prevSet[ds4]) dynScores[ds4] += 20;
+    }
+
+    // Top 6 seç
+    var dynSorted = [];
+    for (var ds5=1; ds5<=48; ds5++) dynSorted.push(ds5);
+    dynSorted.sort(function(a,b){ return dynScores[b]-dynScores[a]; });
+    result.certain6 = dynSorted.slice(0,6).sort(function(a,b){return a-b;});
+  })();
   result.certain6_grpA = (certain8List || []).slice(0,3).sort(function(a,b){return a-b;});
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
