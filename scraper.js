@@ -18,7 +18,7 @@ function dbQuery(sql, params) {
   return db.query(sql, params).catch(function(e) {
     console.log('DB baglanti hatasi, yeniden baglaniliyor...', e.message);
     return db.end().catch(function(){}).then(function() {
-      db = new Client({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+      db = new Client({ connectionString: DB_URL });
       return db.connect();
     }).then(function() {
       console.log('DB yeniden baglandi!');
