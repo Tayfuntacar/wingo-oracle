@@ -11,7 +11,7 @@ var colors = {1:'Sari',9:'Sari',17:'Sari',25:'Sari',33:'Sari',41:'Sari',2:'Yesil
 var ALL_COLORS = ['Sari','Yesil','Mavi','Kirmizi','Kahve','Turuncu','Siyah','Mor'];
 var COLOR_HEX = {'Sari':'#facc15','Yesil':'#22c55e','Mavi':'#3b82f6','Kirmizi':'#ef4444','Kahve':'#d97706','Turuncu':'#f97316','Siyah':'#9ca3af','Mor':'#a855f7'};
 
-var db = new Client({ connectionString: DB_URL });
+var db = new Client({ connectionString: DB_URL, ssl: false });
 var lastProcessedWsRound = -1;
 var globalPredCache = {};
 
@@ -19,7 +19,7 @@ function dbQuery(sql, params) {
   return db.query(sql, params).catch(function(e) {
     console.log('DB baglanti hatasi, yeniden baglaniliyor...', e.message);
     return db.end().catch(function(){}).then(function() {
-      db = new Client({ connectionString: DB_URL });
+      db = new Client({ connectionString: DB_URL, ssl: false });
       return db.connect();
     }).then(function() {
       console.log('DB yeniden baglandi!');
@@ -867,12 +867,6 @@ function predict(draws) {
   var prevNums0 = allNumsArr[0] || [];
   var prevNums1 = allNumsArr[1] || [];
 
-  var COLOR_NUMS_7 = {
-    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
-    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
-    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
-  };
-
   function cntColor(numsArr, color) {
     if (!COLOR_NUMS_7 || !COLOR_NUMS_7[color]) return 0;
     return numsArr.filter(function(x){ return COLOR_NUMS_7[color].indexOf(x) !== -1; }).length;
@@ -1077,432 +1071,285 @@ function predict(draws) {
   var renkOuKey = (predColor||'') + '_' + (predOU||'');
   var specialC6 = RENK_OU_C6[renkOuKey] || null;
 
-  // ── KESİN 6: MS+Renk+OU → İlk 15'e en sık giren sayılar (9927 çekiliş) ──
-  var TRIPLE_ILK15_C6 = {
-    '875_Sari_UNDER':[34, 18, 4, 21, 13, 36],
-    '876_Kahve_OVER':[37, 6, 22, 31, 28, 24],
-    '876_Kahve_UNDER':[5, 13, 32, 28, 18, 33],
-    '876_Kirmizi_OVER':[4, 15, 43, 28, 44, 35],
-    '876_Mavi_OVER':[5, 43, 42, 21, 27, 35],
-    '876_Mavi_UNDER':[3, 17, 19, 23, 14, 22],
-    '876_Mor_OVER':[32, 46, 25, 5, 36, 31],
-    '876_Mor_UNDER':[8, 27, 22, 31, 1, 24],
-    '876_Sari_OVER':[10, 36, 25, 35, 41, 18],
-    '876_Sari_UNDER':[28, 44, 40, 11, 9, 41],
-    '876_Siyah_OVER':[9, 47, 48, 31, 34, 21],
-    '876_Turuncu_OVER':[29, 46, 23, 19, 39, 22],
-    '876_Turuncu_UNDER':[29, 40, 14, 28, 24, 5],
-    '876_Yesil_OVER':[16, 3, 34, 44, 17, 26],
-    '876_Yesil_UNDER':[40, 24, 36, 25, 27, 30],
-    '877_Kahve_OVER':[23, 45, 19, 48, 37, 22],
-    '877_Kahve_UNDER':[5, 13, 44, 21, 26, 42],
-    '877_Kirmizi_OVER':[36, 46, 43, 37, 48, 16],
-    '877_Kirmizi_UNDER':[20, 30, 25, 9, 4, 12],
-    '877_Mavi_OVER':[27, 43, 14, 17, 20, 2],
-    '877_Mavi_UNDER':[30, 17, 34, 2, 47, 21],
-    '877_Mor_OVER':[48, 40, 12, 7, 27, 32],
-    '877_Mor_UNDER':[8, 7, 19, 39, 24, 47],
-    '877_Sari_OVER':[41, 25, 33, 30, 28, 4],
-    '877_Sari_UNDER':[1, 2, 14, 5, 47, 9],
-    '877_Siyah_OVER':[47, 34, 45, 39, 3, 32],
-    '877_Siyah_UNDER':[7, 4, 22, 45, 3, 28],
-    '877_Turuncu_OVER':[27, 30, 8, 38, 11, 29],
-    '877_Turuncu_UNDER':[6, 22, 40, 23, 39, 4],
-    '877_Yesil_OVER':[42, 32, 28, 18, 6, 40],
-    '877_Yesil_UNDER':[18, 2, 48, 23, 5, 41],
-    '878_Kahve_OVER':[29, 37, 11, 21, 32, 26],
-    '878_Kahve_UNDER':[21, 5, 37, 48, 45, 46],
-    '878_Kirmizi_OVER':[32, 36, 5, 42, 29, 25],
-    '878_Kirmizi_UNDER':[20, 4, 42, 14, 8, 41],
-    '878_Mavi_OVER':[43, 22, 18, 48, 45, 4],
-    '878_Mavi_UNDER':[42, 11, 13, 3, 47, 34],
-    '878_Mor_OVER':[40, 48, 43, 32, 38, 12],
-    '878_Mor_UNDER':[16, 14, 1, 23, 34, 24],
-    '878_Sari_OVER':[33, 1, 20, 12, 11, 25],
-    '878_Sari_UNDER':[1, 33, 46, 2, 9, 41],
-    '878_Siyah_OVER':[31, 47, 18, 48, 6, 39],
-    '878_Siyah_UNDER':[15, 7, 23, 3, 24, 1],
-    '878_Turuncu_OVER':[46, 30, 38, 20, 12, 14],
-    '878_Turuncu_UNDER':[22, 33, 14, 6, 32, 28],
-    '878_Yesil_OVER':[26, 42, 5, 34, 21, 44],
-    '878_Yesil_UNDER':[10, 2, 27, 7, 31, 45],
-    '879_Kahve_OVER':[29, 26, 25, 33, 47, 35],
-    '879_Kahve_UNDER':[5, 13, 35, 21, 14, 46],
-    '879_Kirmizi_OVER':[36, 44, 47, 42, 1, 28],
-    '879_Kirmizi_UNDER':[22, 3, 11, 4, 33, 5],
-    '879_Mavi_OVER':[43, 35, 15, 27, 46, 4],
-    '879_Mavi_UNDER':[29, 17, 19, 35, 28, 21],
-    '879_Mor_OVER':[48, 39, 40, 31, 15, 35],
-    '879_Mor_UNDER':[24, 38, 8, 34, 25, 20],
-    '879_Sari_OVER':[25, 38, 20, 10, 12, 3],
-    '879_Sari_UNDER':[9, 25, 15, 46, 1, 21],
-    '879_Siyah_OVER':[18, 19, 39, 42, 31, 15],
-    '879_Siyah_UNDER':[3, 23, 15, 29, 7, 40],
-    '879_Turuncu_OVER':[30, 18, 38, 28, 27, 40],
-    '879_Turuncu_UNDER':[14, 25, 22, 48, 12, 27],
-    '879_Yesil_OVER':[26, 30, 44, 4, 21, 29],
-    '879_Yesil_UNDER':[10, 41, 42, 2, 17, 15],
-    '880_Kahve_OVER':[29, 44, 34, 8, 14, 42],
-    '880_Kahve_UNDER':[29, 14, 39, 27, 21, 15],
-    '880_Kirmizi_OVER':[36, 40, 10, 23, 28, 41],
-    '880_Kirmizi_UNDER':[4, 41, 17, 24, 20, 5],
-    '880_Mavi_OVER':[26, 36, 45, 30, 35, 3],
-    '880_Mavi_UNDER':[19, 3, 16, 43, 35, 2],
-    '880_Mor_OVER':[38, 40, 23, 35, 31, 13],
-    '880_Mor_UNDER':[36, 1, 26, 24, 8, 28],
-    '880_Sari_OVER':[24, 25, 48, 18, 41, 37],
-    '880_Sari_UNDER':[1, 9, 20, 32, 36, 17],
-    '880_Siyah_OVER':[36, 39, 19, 10, 42, 12],
-    '880_Siyah_UNDER':[39, 18, 40, 28, 7, 3],
-    '880_Turuncu_OVER':[30, 3, 11, 32, 13, 8],
-    '880_Turuncu_UNDER':[14, 22, 47, 3, 27, 44],
-    '880_Yesil_OVER':[34, 42, 25, 9, 14, 45],
-    '880_Yesil_UNDER':[32, 10, 13, 18, 43, 48],
-    '881_Kahve_OVER':[4, 18, 26, 24, 41, 25],
-    '881_Kahve_UNDER':[6, 35, 13, 21, 32, 25],
-    '881_Mavi_OVER':[37, 15, 35, 13, 11, 42],
-    '881_Mavi_UNDER':[11, 3, 29, 45, 6, 27],
-    '881_Sari_UNDER':[27, 8, 34, 25, 7, 17],
-    '882_Kahve_OVER':[37, 14, 6, 28, 19, 17],
-    '882_Kahve_UNDER':[13, 15, 30, 24, 26, 38],
-    '882_Kirmizi_OVER':[25, 36, 19, 26, 8, 34],
-    '882_Mor_UNDER':[31, 8, 45, 39, 13, 16],
-    '883_Yesil_UNDER':[38, 2, 10, 18, 9, 19],
-    '949_Kahve_OVER':[29, 45, 6, 14, 41, 2],
-    '949_Kahve_UNDER':[13, 21, 32, 5, 44, 25],
-    '949_Kirmizi_OVER':[44, 36, 15, 21, 13, 34],
-    '949_Kirmizi_UNDER':[4, 35, 6, 38, 12, 11],
-    '949_Mavi_OVER':[35, 27, 48, 42, 43, 21],
-    '949_Mavi_UNDER':[19, 3, 11, 12, 6, 18],
-    '949_Mor_OVER':[48, 32, 40, 47, 2, 35],
-    '949_Mor_UNDER':[24, 16, 1, 17, 8, 41],
-    '949_Sari_OVER':[41, 33, 17, 35, 42, 25],
-    '949_Sari_UNDER':[9, 43, 42, 17, 30, 1],
-    '949_Siyah_OVER':[31, 21, 42, 17, 41, 29],
-    '949_Siyah_UNDER':[7, 24, 8, 47, 1, 27],
-    '949_Turuncu_OVER':[38, 42, 12, 30, 10, 37],
-    '949_Turuncu_UNDER':[6, 22, 21, 14, 9, 43],
-    '949_Yesil_OVER':[42, 9, 34, 25, 22, 26],
-    '949_Yesil_UNDER':[2, 10, 47, 41, 8, 1],
-    '950_Kahve_OVER':[37, 45, 29, 40, 2, 18],
-    '950_Kahve_UNDER':[13, 5, 21, 37, 32, 14],
-    '950_Kirmizi_OVER':[36, 44, 28, 30, 29, 47],
-    '950_Kirmizi_UNDER':[12, 4, 20, 1, 45, 24],
-    '950_Mavi_OVER':[35, 43, 27, 39, 46, 20],
-    '950_Mavi_UNDER':[3, 19, 11, 41, 24, 12],
-    '950_Mor_OVER':[40, 32, 48, 15, 26, 16],
-    '950_Mor_UNDER':[16, 8, 24, 47, 26, 19],
-    '950_Sari_OVER':[25, 41, 33, 30, 40, 38],
-    '950_Sari_UNDER':[17, 1, 9, 31, 28, 13],
-    '950_Siyah_OVER':[47, 31, 39, 30, 29, 33],
-    '950_Siyah_UNDER':[23, 27, 7, 30, 15, 17],
-    '950_Turuncu_OVER':[38, 46, 30, 18, 17, 28],
-    '950_Turuncu_UNDER':[6, 22, 14, 43, 7, 45],
-    '950_Yesil_OVER':[42, 26, 34, 36, 3, 46],
-    '950_Yesil_UNDER':[2, 18, 10, 3, 6, 46],
-    '951_Kahve_OVER':[37, 29, 45, 28, 40, 3],
-    '951_Kahve_UNDER':[13, 5, 21, 35, 16, 46],
-    '951_Kirmizi_OVER':[28, 44, 36, 48, 42, 17],
-    '951_Kirmizi_UNDER':[4, 20, 12, 42, 2, 37],
-    '951_Mavi_OVER':[27, 35, 43, 7, 47, 4],
-    '951_Mavi_UNDER':[3, 19, 11, 12, 30, 37],
-    '951_Mor_OVER':[32, 40, 48, 41, 43, 39],
-    '951_Mor_UNDER':[24, 16, 8, 25, 42, 13],
-    '951_Sari_OVER':[33, 25, 41, 38, 9, 26],
-    '951_Sari_UNDER':[9, 17, 1, 48, 34, 39],
-    '951_Siyah_OVER':[39, 31, 47, 43, 44, 6],
-    '951_Siyah_UNDER':[7, 15, 23, 27, 35, 5],
-    '951_Turuncu_OVER':[30, 46, 38, 42, 6, 2],
-    '951_Turuncu_UNDER':[22, 6, 14, 44, 26, 46],
-    '951_Yesil_OVER':[42, 34, 26, 28, 46, 5],
-    '951_Yesil_UNDER':[18, 10, 2, 27, 12, 46],
-    '952_Kahve_OVER':[29, 37, 45, 8, 18, 13],
-    '952_Kahve_UNDER':[21, 5, 47, 13, 20, 12],
-    '952_Kirmizi_OVER':[36, 28, 44, 35, 2, 42],
-    '952_Kirmizi_UNDER':[4, 12, 5, 20, 42, 32],
-    '952_Mavi_OVER':[43, 35, 32, 23, 27, 7],
-    '952_Mavi_UNDER':[3, 11, 38, 19, 17, 44],
-    '952_Mor_OVER':[32, 48, 40, 33, 13, 47],
-    '952_Mor_UNDER':[16, 24, 8, 3, 21, 30],
-    '952_Sari_OVER':[41, 33, 25, 11, 22, 10],
-    '952_Sari_UNDER':[9, 17, 1, 40, 27, 13],
-    '952_Siyah_OVER':[31, 39, 47, 20, 1, 25],
-    '952_Siyah_UNDER':[23, 7, 44, 6, 15, 3],
-    '952_Turuncu_OVER':[30, 46, 38, 5, 23, 37],
-    '952_Turuncu_UNDER':[22, 14, 6, 38, 41, 47],
-    '952_Yesil_OVER':[42, 34, 32, 26, 4, 40],
-    '952_Yesil_UNDER':[10, 29, 18, 27, 30, 38],
-    '953_Kahve_OVER':[45, 29, 25, 13, 30, 31],
-    '953_Kahve_UNDER':[13, 5, 41, 16, 21, 45],
-    '953_Kirmizi_OVER':[36, 28, 44, 42, 23, 18],
-    '953_Kirmizi_UNDER':[20, 4, 33, 8, 25, 3],
-    '953_Mavi_OVER':[43, 27, 35, 25, 28, 10],
-    '953_Mavi_UNDER':[19, 3, 11, 29, 48, 41],
-    '953_Mor_OVER':[32, 40, 48, 2, 22, 6],
-    '953_Mor_UNDER':[8, 42, 24, 16, 44, 32],
-    '953_Sari_OVER':[41, 33, 25, 34, 22, 32],
-    '953_Sari_UNDER':[17, 9, 1, 26, 39, 6],
-    '953_Siyah_OVER':[39, 47, 31, 24, 38, 26],
-    '953_Siyah_UNDER':[27, 23, 15, 7, 20, 25],
-    '953_Turuncu_OVER':[46, 41, 38, 16, 14, 12],
-    '953_Turuncu_UNDER':[14, 22, 6, 15, 4, 48],
-    '953_Yesil_OVER':[34, 42, 14, 26, 44, 29],
-    '953_Yesil_UNDER':[18, 10, 2, 11, 46, 14],
-    '954_Kahve_OVER':[45, 37, 27, 30, 35, 29],
-    '954_Kahve_UNDER':[21, 13, 5, 25, 8, 22],
-    '954_Kirmizi_OVER':[36, 28, 9, 15, 3, 44],
-    '954_Kirmizi_UNDER':[12, 4, 42, 34, 28, 38],
-    '954_Mavi_OVER':[35, 27, 43, 23, 4, 31],
-    '954_Mavi_UNDER':[19, 9, 3, 1, 48, 31],
-    '954_Mor_OVER':[32, 40, 48, 11, 2, 34],
-    '954_Mor_UNDER':[31, 16, 39, 19, 38, 24],
-    '954_Sari_OVER':[33, 41, 20, 13, 11, 25],
-    '954_Sari_UNDER':[17, 1, 9, 30, 22, 20],
-    '954_Siyah_OVER':[39, 47, 46, 18, 12, 27],
-    '954_Siyah_UNDER':[15, 7, 23, 41, 20, 33],
-    '954_Turuncu_OVER':[30, 38, 46, 42, 21, 31],
-    '954_Turuncu_UNDER':[14, 6, 33, 20, 36, 22],
-    '954_Yesil_OVER':[42, 37, 33, 38, 26, 9],
-    '954_Yesil_UNDER':[10, 2, 35, 18, 11, 9],
-    '955_Kahve_OVER':[37, 45, 29, 26, 17, 18],
-    '955_Kahve_UNDER':[21, 38, 5, 13, 30, 17],
-    '955_Kirmizi_OVER':[44, 28, 36, 22, 2, 37],
-    '955_Kirmizi_UNDER':[4, 20, 3, 12, 47, 22],
-    '955_Mavi_OVER':[43, 35, 21, 47, 27, 31],
-    '955_Mavi_UNDER':[11, 19, 1, 3, 24, 26],
-    '955_Mor_OVER':[32, 40, 42, 48, 6, 24],
-    '955_Mor_UNDER':[24, 35, 16, 12, 8, 46],
-    '955_Sari_OVER':[33, 14, 41, 26, 32, 25],
-    '955_Sari_UNDER':[9, 7, 1, 27, 46, 16],
-    '955_Siyah_OVER':[47, 31, 39, 40, 46, 3],
-    '955_Siyah_UNDER':[23, 7, 15, 25, 20, 33],
-    '955_Turuncu_OVER':[30, 46, 22, 33, 42, 38],
-    '955_Turuncu_UNDER':[22, 6, 14, 38, 32, 19],
-    '955_Yesil_OVER':[34, 42, 26, 10, 44, 31],
-    '955_Yesil_UNDER':[10, 35, 2, 13, 36, 32],
-    '956_Kahve_OVER':[37, 29, 5, 28, 43, 27],
-    '956_Kahve_UNDER':[21, 5, 13, 12, 10, 19],
-    '956_Kirmizi_OVER':[23, 28, 44, 33, 27, 42],
-    '956_Kirmizi_UNDER':[4, 18, 32, 48, 40, 19],
-    '956_Mavi_OVER':[35, 43, 44, 15, 27, 29],
-    '956_Mavi_UNDER':[19, 11, 34, 14, 39, 27],
-    '956_Mor_OVER':[40, 32, 26, 1, 22, 33],
-    '956_Mor_UNDER':[2, 24, 16, 8, 27, 18],
-    '956_Sari_OVER':[33, 41, 25, 48, 1, 47],
-    '956_Sari_UNDER':[9, 18, 23, 17, 30, 46],
-    '956_Siyah_OVER':[17, 34, 9, 16, 39, 25],
-    '956_Siyah_UNDER':[7, 30, 46, 17, 23, 22],
-    '956_Turuncu_OVER':[46, 34, 28, 25, 33, 11],
-    '956_Turuncu_UNDER':[14, 32, 35, 5, 6, 37],
-    '956_Yesil_OVER':[38, 45, 42, 4, 32, 34],
-    '956_Yesil_UNDER':[2, 14, 10, 27, 36, 18],
-    '957_Kahve_OVER':[43, 45, 31, 29, 37, 27],
-    '957_Kahve_UNDER':[13, 38, 46, 21, 40, 45],
-    '957_Kirmizi_OVER':[44, 28, 9, 14, 21, 11],
-    '957_Kirmizi_UNDER':[4, 12, 17, 47, 25, 39],
-    '957_Mavi_OVER':[43, 27, 21, 35, 24, 11],
-    '957_Mavi_UNDER':[3, 27, 10, 46, 48, 41],
-    '957_Mor_OVER':[40, 9, 5, 48, 32, 13],
-    '957_Mor_UNDER':[9, 3, 25, 8, 40, 32],
-    '957_Sari_OVER':[33, 41, 16, 15, 25, 7],
-    '957_Sari_UNDER':[1, 46, 41, 17, 9, 24],
-    '957_Siyah_OVER':[47, 39, 31, 30, 26, 25],
-    '957_Siyah_UNDER':[7, 25, 15, 22, 23, 30],
-    '957_Turuncu_OVER':[23, 30, 39, 46, 16, 10],
-    '957_Yesil_OVER':[26, 42, 34, 18, 38, 29],
-    '957_Yesil_UNDER':[18, 32, 10, 35, 2, 47],
-    '958_Kahve_UNDER':[13, 5, 40, 27, 16, 24],
-    '958_Kirmizi_OVER':[10, 41, 43, 36, 33, 4],
-    '958_Kirmizi_UNDER':[12, 4, 20, 29, 35, 41],
-    '958_Mavi_OVER':[27, 43, 23, 36, 35, 40],
-    '958_Mavi_UNDER':[45, 19, 43, 38, 33, 11],
-    '958_Mor_UNDER':[17, 5, 16, 28, 24, 23],
-    '958_Sari_UNDER':[1, 39, 9, 3, 42, 31],
-    '958_Siyah_OVER':[47, 31, 11, 5, 1, 6],
-    '958_Turuncu_OVER':[3, 16, 46, 30, 37, 31],
-    '958_Turuncu_UNDER':[22, 25, 30, 5, 14, 46],
-    '958_Yesil_OVER':[34, 4, 37, 20, 26, 32],
-    '959_Kahve_OVER':[45, 32, 18, 6, 7, 1],
-    '959_Kahve_UNDER':[21, 13, 5, 22, 3, 47],
-    '959_Mavi_OVER':[34, 35, 16, 43, 32, 12],
-    '959_Sari_OVER':[25, 38, 43, 26, 41, 22],
-    '959_Siyah_OVER':[39, 29, 38, 27, 31, 23],
-    '959_Turuncu_OVER':[30, 33, 44, 25, 45, 46],
-    '959_Turuncu_UNDER':[14, 36, 6, 23, 41, 40],
-    '960_Mavi_OVER':[17, 27, 23, 11, 44, 32]
+  // ── KESİN 6 + KESİN 8: TEKRAR ORANI + SİNYAL ──
+  // 2414 çekiliş analizi: S8 (3xC8 + 3xC7) en iyi 6/6 = %14.4
+  var prevNums = allNumsArr[0] && allNumsArr[0].length>0 ? allNumsArr[0] : [];
+  var c6Scored = prevNums.slice().sort(function(a,b){return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);});
+
+  // ── MS BAZLI OPTİMAL C8 GRUPLARI (2652 çekiliş analizi) ──
+  var MS_C8 = {
+    951:  [46,28,40,2,47,1,27,11],   // 8/8=%17.3
+    959:  [14,22,2,41,33,34,6,44],   // 8/8=%16.2
+    962:  [11,39,4,8,23,28,1,33],    // 8/8=%20.0
+    964:  [13,48,23,19,40,21,4,47],  // 8/8=%25.0
+    957:  [47,14,25,12,36,39,26,46], // 8/8=%12.8
+    961:  [8,40,24,39,20,28,26,46],  // 8/8=%12.8
   };
-  var MS_RENK_ILK15_C6 = {
-    '875_Kirmizi':[27, 30, 16, 3, 23, 6],
-    '875_Sari':[4, 36, 2, 15, 18, 30],
-    '876_Kahve':[5, 28, 32, 31, 18, 6],
-    '876_Kirmizi':[4, 35, 43, 30, 10, 47],
-    '876_Mavi':[5, 43, 22, 3, 19, 48],
-    '876_Mor':[27, 32, 31, 24, 8, 36],
-    '876_Sari':[10, 41, 25, 11, 44, 40],
-    '876_Siyah':[21, 39, 9, 34, 47, 48],
-    '876_Turuncu':[29, 23, 40, 22, 24, 18],
-    '876_Yesil':[40, 30, 3, 26, 28, 44],
-    '877_Kahve':[5, 23, 44, 13, 48, 22],
-    '877_Kirmizi':[20, 9, 36, 28, 46, 30],
-    '877_Mavi':[17, 14, 30, 2, 27, 43],
-    '877_Mor':[7, 8, 40, 12, 32, 48],
-    '877_Sari':[25, 41, 30, 14, 1, 12],
-    '877_Siyah':[47, 45, 3, 34, 7, 32],
-    '877_Turuncu':[27, 22, 29, 37, 6, 38],
-    '877_Yesil':[18, 42, 32, 2, 28, 6],
-    '878_Kahve':[37, 21, 29, 5, 45, 11],
-    '878_Kirmizi':[42, 20, 4, 36, 8, 14],
-    '878_Mavi':[43, 18, 29, 47, 42, 22],
-    '878_Mor':[38, 40, 32, 43, 14, 12],
-    '878_Sari':[1, 33, 20, 41, 35, 46],
-    '878_Siyah':[41, 6, 39, 18, 31, 23],
-    '878_Turuncu':[46, 30, 14, 22, 40, 33],
-    '878_Yesil':[2, 27, 10, 31, 34, 26],
-    '879_Kahve':[5, 29, 25, 35, 47, 26],
-    '879_Kirmizi':[36, 4, 47, 42, 44, 40],
-    '879_Mavi':[35, 43, 15, 29, 46, 3],
-    '879_Mor':[39, 15, 10, 38, 48, 32],
-    '879_Sari':[25, 38, 12, 20, 10, 3],
-    '879_Siyah':[15, 42, 18, 14, 11, 41],
-    '879_Turuncu':[18, 27, 12, 30, 25, 38],
-    '879_Yesil':[42, 15, 27, 2, 34, 17],
-    '880_Kahve':[29, 14, 44, 15, 8, 42],
-    '880_Kirmizi':[41, 4, 28, 24, 36, 5],
-    '880_Mavi':[3, 43, 19, 35, 26, 16],
-    '880_Mor':[1, 31, 35, 40, 38, 33],
-    '880_Sari':[9, 20, 1, 37, 36, 24],
-    '880_Siyah':[39, 36, 12, 6, 42, 18],
-    '880_Turuncu':[14, 30, 3, 47, 27, 11],
-    '880_Yesil':[42, 32, 34, 13, 14, 43],
-    '881_Kahve':[35, 6, 25, 15, 7, 37],
-    '881_Kirmizi':[28, 4, 27, 23, 20, 16],
-    '881_Mavi':[11, 15, 45, 14, 29, 13],
-    '881_Mor':[5, 43, 26, 12, 24, 8],
-    '881_Sari':[25, 17, 27, 24, 7, 8],
-    '881_Siyah':[23, 47, 13, 1, 28, 8],
-    '881_Turuncu':[38, 6, 2, 48, 42, 19],
-    '881_Yesil':[34, 47, 40, 45, 43, 17],
-    '882_Kahve':[37, 17, 14, 28, 47, 26],
-    '882_Kirmizi':[19, 26, 4, 25, 44, 36],
-    '882_Mor':[31, 8, 5, 23, 17, 30],
-    '882_Siyah':[16, 45, 19, 15, 31, 7],
-    '883_Mavi':[3, 19, 6, 43, 41, 29],
-    '883_Mor':[29, 40, 10, 36, 15, 32],
-    '883_Siyah':[22, 40, 39, 42, 47, 32],
-    '883_Yesil':[9, 42, 26, 27, 21, 10],
-    '949_Kahve':[29, 21, 6, 44, 2, 5],
-    '949_Kirmizi':[35, 4, 6, 44, 43, 8],
-    '949_Mavi':[19, 27, 3, 35, 48, 12],
-    '949_Mor':[48, 40, 1, 24, 8, 32],
-    '949_Sari':[41, 17, 42, 27, 33, 25],
-    '949_Siyah':[31, 24, 7, 42, 17, 47],
-    '949_Turuncu':[6, 22, 38, 30, 21, 12],
-    '949_Yesil':[42, 2, 34, 10, 9, 13],
-    '950_Kahve':[37, 45, 13, 21, 1, 29],
-    '950_Kirmizi':[28, 44, 12, 4, 36, 20],
-    '950_Mavi':[35, 43, 3, 19, 27, 11],
-    '950_Mor':[16, 40, 8, 24, 32, 26],
-    '950_Sari':[25, 17, 1, 9, 41, 33],
-    '950_Siyah':[30, 23, 31, 39, 47, 15],
-    '950_Turuncu':[38, 46, 14, 22, 30, 6],
-    '950_Yesil':[42, 18, 2, 26, 3, 34],
-    '951_Kahve':[13, 29, 5, 45, 37, 35],
-    '951_Kirmizi':[28, 4, 44, 42, 12, 20],
-    '951_Mavi':[27, 11, 19, 3, 43, 35],
-    '951_Mor':[32, 40, 24, 16, 48, 8],
-    '951_Sari':[33, 9, 25, 38, 17, 41],
-    '951_Siyah':[39, 31, 7, 15, 47, 27],
-    '951_Turuncu':[30, 6, 46, 22, 38, 14],
-    '951_Yesil':[10, 18, 2, 34, 42, 46],
-    '952_Kahve':[21, 37, 29, 13, 45, 5],
-    '952_Kirmizi':[4, 12, 20, 36, 42, 5],
-    '952_Mavi':[43, 3, 35, 23, 38, 11],
-    '952_Mor':[16, 32, 24, 8, 40, 3],
-    '952_Sari':[41, 33, 40, 25, 1, 17],
-    '952_Siyah':[39, 23, 31, 47, 7, 1],
-    '952_Turuncu':[30, 38, 22, 14, 6, 37],
-    '952_Yesil':[42, 34, 10, 30, 4, 38],
-    '953_Kahve':[45, 13, 41, 5, 35, 16],
-    '953_Kirmizi':[36, 4, 23, 20, 42, 8],
-    '953_Mavi':[19, 3, 43, 27, 35, 28],
-    '953_Mor':[32, 40, 48, 8, 22, 24],
-    '953_Sari':[33, 39, 41, 9, 17, 1],
-    '953_Siyah':[47, 39, 15, 31, 3, 24],
-    '953_Turuncu':[14, 46, 41, 38, 15, 6],
-    '953_Yesil':[2, 10, 14, 46, 18, 34],
-    '954_Kahve':[21, 5, 13, 37, 45, 27],
-    '954_Kirmizi':[28, 36, 12, 42, 3, 8],
-    '954_Mavi':[19, 27, 35, 31, 43, 24],
-    '954_Mor':[32, 16, 11, 40, 31, 24],
-    '954_Sari':[17, 1, 33, 20, 9, 13],
-    '954_Siyah':[15, 7, 23, 47, 39, 18],
-    '954_Turuncu':[14, 30, 21, 33, 28, 22],
-    '954_Yesil':[10, 42, 33, 9, 37, 38],
-    '955_Kahve':[17, 21, 38, 19, 13, 45],
-    '955_Kirmizi':[22, 2, 47, 37, 41, 44],
-    '955_Mavi':[1, 11, 21, 47, 35, 43],
-    '955_Mor':[24, 6, 8, 46, 39, 48],
-    '955_Sari':[9, 7, 27, 33, 14, 39],
-    '955_Siyah':[23, 31, 25, 18, 3, 47],
-    '955_Turuncu':[22, 30, 46, 38, 34, 14],
-    '955_Yesil':[10, 34, 42, 35, 13, 26],
-    '956_Kahve':[5, 37, 29, 28, 12, 21],
-    '956_Kirmizi':[4, 48, 32, 18, 42, 25],
-    '956_Mavi':[19, 11, 35, 34, 27, 44],
-    '956_Mor':[40, 32, 26, 1, 8, 2],
-    '956_Sari':[9, 41, 23, 30, 46, 21],
-    '956_Siyah':[17, 39, 46, 30, 23, 29],
-    '956_Turuncu':[14, 46, 35, 33, 11, 28],
-    '956_Yesil':[2, 38, 32, 42, 10, 14],
-    '957_Kahve':[45, 13, 5, 31, 43, 38],
-    '957_Kirmizi':[4, 44, 12, 28, 26, 9],
-    '957_Mavi':[27, 43, 35, 3, 21, 24],
-    '957_Mor':[9, 40, 32, 34, 8, 21],
-    '957_Sari':[41, 1, 33, 46, 11, 23],
-    '957_Siyah':[39, 30, 25, 47, 31, 15],
-    '957_Turuncu':[14, 22, 30, 23, 16, 39],
-    '957_Yesil':[26, 18, 32, 10, 34, 24],
-    '958_Kahve':[13, 5, 24, 7, 27, 25],
-    '958_Kirmizi':[41, 43, 4, 10, 33, 36],
-    '958_Mavi':[27, 43, 33, 23, 40, 36],
-    '958_Mor':[16, 5, 17, 24, 23, 28],
-    '958_Sari':[31, 1, 17, 9, 25, 15],
-    '958_Siyah':[31, 1, 6, 47, 11, 34],
-    '958_Turuncu':[30, 46, 16, 22, 24, 11],
-    '958_Yesil':[18, 32, 1, 28, 37, 4],
-    '959_Kahve':[21, 45, 22, 32, 13, 47],
-    '959_Kirmizi':[28, 1, 3, 30, 14, 23],
-    '959_Mavi':[15, 6, 34, 3, 35, 24],
-    '959_Mor':[8, 44, 23, 31, 48, 24],
-    '959_Sari':[38, 25, 9, 34, 11, 41],
-    '959_Siyah':[39, 38, 23, 47, 27, 29],
-    '959_Turuncu':[30, 40, 47, 41, 14, 44],
-    '959_Yesil':[2, 26, 42, 40, 10, 5],
-    '960_Kahve':[24, 3, 26, 46, 29, 9],
-    '960_Kirmizi':[43, 12, 34, 16, 40, 46],
-    '960_Mavi':[11, 23, 43, 35, 22, 38],
-    '960_Mor':[40, 13, 45, 43, 2, 19],
-    '960_Siyah':[7, 48, 42, 22, 45, 23],
-    '961_Kirmizi':[8, 10, 20, 3, 28, 14],
-    '962_Mavi':[35, 46, 2, 9, 38, 37]
+  // MS+OU bazlı optimal C8
+  var MS_OU_C8 = {
+    '961_OVER':  [8,40,45,43,15,24,3,10],   // 8/8=%45.0
+    '960_UNDER': [47,38,2,5,16,41,24,46],   // 8/8=%35.7
+    '962_OVER':  [43,18,4,23,36,28,46,9],   // 8/8=%31.2
+    '959_UNDER': [22,23,24,35,2,44,18,4],   // 8/8=%27.6
+    '951_OVER':  [8,28,39,10,47,25,40,27],  // 8/8=%25.7
+    '951_UNDER': [46,11,2,3,1,19,40,14],    // 8/8=%25.0
+    '959_OVER':  [14,47,41,2,13,33,22,6],   // 8/8=%15.4
+    '961_UNDER': [20,24,39,38,26,35,2,27],  // 8/8=%15.8
   };
-  var RENK_ILK15_C6 = {
-    'Kahve':[13, 37, 21, 29, 5, 45],
-    'Kirmizi':[4, 36, 28, 20, 12, 44],
-    'Mavi':[35, 43, 3, 19, 27, 11],
-    'Mor':[40, 32, 8, 24, 48, 16],
-    'Sari':[25, 33, 41, 9, 1, 17],
-    'Siyah':[39, 47, 31, 7, 23, 15],
-    'Turuncu':[30, 38, 14, 46, 22, 6],
-    'Yesil':[42, 2, 10, 34, 18, 26]
+  // MS+Renk bazlı optimal C8 (en güçlüler)
+  var MS_RENK_C8 = {
+    '959_Mavi':     [6,35,2,12,13,34,33,44],   // 8/8=%47.4
+    '952_Turuncu':  [15,20,5,24,34,8,30,27],   // 8/8=%40.0
+    '959_Turuncu':  [44,6,12,36,22,42,33,41],  // 8/8=%37.5
+    '958_Sari':     [46,3,29,28,9,12,4,43],    // 8/8=%36.8
+    '958_Yesil':    [5,1,32,21,16,3,19,34],    // 8/8=%35.3
+    '953_Mor':      [43,42,2,17,34,44,13,24],  // 8/8=%34.2
+    '952_Mavi':     [24,12,21,10,47,26,17,30], // 8/8=%33.3
+    '957_Turuncu':  [39,14,12,7,8,29,26,10],   // 8/8=%32.0
+    '952_Kirmizi':  [46,19,24,47,20,9,5,6],    // 8/8=%30.0
+    '957_Sari':     [47,33,41,24,44,12,16,48], // 8/8=%29.6
+    '956_Siyah':    [47,45,11,38,40,46,17,16], // 8/8=%29.0
+    '952_Siyah':    [32,3,14,37,31,9,30,2],    // 8/8=%28.1
+    '957_Kirmizi':  [43,47,3,13,10,4,21,12],   // 8/8=%27.8
+    '954_Mor':      [41,40,8,11,32,26,19,17],  // 8/8=%27.7
+    '957_Siyah':    [39,47,25,44,31,1,15,28],  // 8/8=%27.5
+    '957_Yesil':    [41,9,23,19,42,26,12,47],  // 8/8=%27.3
+    '953_Siyah':    [18,38,5,27,15,23,45,20],  // 8/8=%26.5
+    '955_Turuncu':  [38,48,19,22,1,7,34,2],    // 8/8=%25.4
+    '953_Yesil':    [5,46,14,38,6,2,21,39],    // 8/8=%25.0
+    '952_Sari':     [31,2,17,39,33,48,25,15],  // 8/8=%25.0
+    '956_Sari':     [20,48,9,42,24,46,2,33],   // 8/8=%24.4
+    '956_Yesil':    [43,32,42,10,4,39,6,27],   // 8/8=%24.3
+    '953_Kirmizi':  [43,12,41,23,21,7,42,28],  // 8/8=%24.2
+    '955_Siyah':    [40,23,15,48,47,32,18,3],  // 8/8=%23.3
+    '956_Kahve':    [37,31,22,19,5,10,39,28],  // 8/8=%25.6
+    '954_Mavi':     [31,15,46,19,40,47,4,35],  // 8/8=%21.1
+    '955_Kahve':    [37,29,30,5,2,40,39,45],   // 8/8=%16.4
+    '955_Mavi':     [47,43,40,2,37,5,1,48],    // 8/8=%15.2
+    '954_Sari':     [2,8,23,9,4,38,37,39],     // 8/8=%20.0
+    '954_Siyah':    [11,23,19,7,15,37,28,6],   // 8/8=%19.6
+    '955_Sari':     [11,9,13,41,23,40,19,33],  // 8/8=%18.9
+    '957_Mavi':     [41,27,44,40,25,47,2,1],   // 8/8=%17.6
+    '956_Mor':      [32,9,11,40,48,1,36,45],   // 8/8=%17.6
+    '954_Turuncu':  [33,35,14,34,17,9,5,30],   // 8/8=%16.1
+    '954_Kahve':    [21,8,45,17,12,48,1,29],   // 8/8=%16.1
+    '956_Turuncu':  [8,48,14,38,36,11,35,15],  // 8/8=%16.3
+    '956_Kirmizi':  [3,18,45,8,21,46,41,27],   // 8/8=%21.2
+    '958_Kahve':    [36,22,48,27,5,15,6,13],   // 8/8=%26.1
+    '958_Turuncu':  [46,45,3,14,24,12,6,39],   // 8/8=%20.8
+    '956_Mavi':     [44,19,25,27,15,11,14,4],  // 8/8=%20.8
+    '953_Sari':     [41,16,42,7,40,9,18,37],   // 8/8=%17.8
+    '952_Yesil':    [6,42,30,10,44,22,34,21],  // 8/8=%20.7
+    '955_Kirmizi':  [37,12,45,32,28,16,27,31], // 8/8=%19.6
+    '952_Kahve':    [38,21,18,37,12,22,6,20],  // 8/8=%24.0
+    '952_Mor':      [32,16,9,29,11,27,44,18],  // 8/8=%17.4
+    '958_Mavi':     [23,11,9,43,1,42,22,41],   // 8/8=%27.8
+    '957_Mor':      [46,44,21,6,48,37,31,10],  // 8/8=%21.9
+    '959_Kahve':    [22,14,21,27,45,25,36,33], // 8/8=%21.7
+    '957_Kahve':    [18,27,19,14,23,38,7,37],  // 8/8=%21.7
   };
 
-  var tripleKey = predMs + '_' + predColor + '_' + predOU;
-  var msRenkKey = predMs + '_' + predColor;
-  var c6Arr = TRIPLE_ILK15_C6[tripleKey] || MS_RENK_ILK15_C6[msRenkKey] || RENK_ILK15_C6[predColor] || [33,25,41,9,17,1];
-  result.certain6 = c6Arr.slice().sort(function(a,b){return a-b;});
+  // C8 seçim önceliği: MS+Renk > MS+OU > PrevRenk+MS > MS bazlı > tekrar oranı
+  var msRenkC8Key    = predMs + '_' + (colorList[0]||'');
+  var msOuC8Key      = predMs + '_' + (ouList[0]||'');
+  var prevRenkMsC8Key = (colorList[1]||'') + '_' + predMs;
 
-  result.certain6_grpA = c6Arr.slice(0,3).sort(function(a,b){return a-b;});
+  // PrevRenk+MS özel grupları
+  var PREV_RENK_MS_C8 = {
+    'Kirmizi_958': [3,46,17,43,6,45,47,38],   // %41.2
+    'Kirmizi_952': [30,26,31,42,20,18,46,1],  // %39.3
+    'Sari_952':    [32,23,14,19,33,17,28,29], // %39.1
+    'Turuncu_957': [2,22,3,14,12,47,19,24],   // %37.5
+    'Kahve_959':   [6,10,2,39,32,14,22,24],   // %36.8
+    'Mor_952':     [36,12,24,42,5,6,32,37],   // %35.3
+    'Kirmizi_959': [11,48,47,35,15,16,7,18],  // %33.3
+    'Siyah_952':   [47,27,21,4,46,17,16,39],  // %31.6
+    'Mor_957':     [44,20,14,37,3,33,8,41],   // %31.2
+    'Mavi_953':    [17,27,46,42,3,37,44,13],  // %31.2
+    'Siyah_958':   [34,35,18,6,24,11,2,46],   // %31.2
+    'Sari_957':    [25,31,26,8,30,39,18,9],   // %28.0
+    'Mavi_959':    [41,26,33,13,11,3,45,17],  // %26.3
+    'Yesil_958':   [23,17,1,41,25,44,42,13],  // %26.1
+  };
+
+  var specialC8 = MS_RENK_C8[msRenkC8Key] || MS_OU_C8[msOuC8Key] || PREV_RENK_MS_C8[prevRenkMsC8Key] || MS_C8[predMs] || null;
+
+  var certain8List;
+  if (specialC8 && specialC8.length === 8) {
+    certain8List = specialC8.slice();
+  } else {
+    // ── CLUSTER LİMİT (GPT önerisi): aynı renk grubundan max 3 sayı ──
+    var c8Base = c6Scored.slice(0, 8);
+    var colorGroupCount = {};
+    var c8WithLimit = [];
+    c8Base.forEach(function(num) {
+      var numColor = colors[num] || 'X';
+      colorGroupCount[numColor] = (colorGroupCount[numColor] || 0) + 1;
+      if (colorGroupCount[numColor] <= 3) {
+        c8WithLimit.push(num);
+      }
+    });
+    // Eksik kalırsa clusterSorted'dan tamamla (limitli)
+    for (var cli = 0; c8WithLimit.length < 8 && cli < clusterSorted.length; cli++) {
+      var cn = clusterSorted[cli];
+      if (c8WithLimit.indexOf(cn) === -1) {
+        var cnColor = colors[cn] || 'X';
+        colorGroupCount[cnColor] = (colorGroupCount[cnColor] || 0);
+        if (colorGroupCount[cnColor] < 3) {
+          colorGroupCount[cnColor]++;
+          c8WithLimit.push(cn);
+        }
+      }
+    }
+    // Hala eksikse limit olmadan tamamla
+    for (var cli2 = 0; c8WithLimit.length < 8 && cli2 < c6Scored.length; cli2++) {
+      if (c8WithLimit.indexOf(c6Scored[cli2]) === -1) c8WithLimit.push(c6Scored[cli2]);
+    }
+    certain8List = c8WithLimit.slice(0, 8);
+  }
+  result.certain8 = certain8List.slice().sort(function(a,b){return a-b;});
+
+  // ── KESİN 7: AZ ÇIKAN RENK + MS DIŞI SAYILAR ──
+  // Strateji (1470 çekiliş test): ort=5.129, 6+=%39.0, 7/7=%10.4
+  // C8 ile %100 farklı sayılar — hiç örtüşme yok
+  //
+  // 1. Önceki çekilişte ≤2 sayı çıkan renklerin tüm 6 sayısı → az renk havuzu
+  // 2. Ms havuzundan C6/C8'de olmayan sayılar → ms dışı havuz
+  // 3. Birleştir, pozisyon skoru ile sırala, C8'de olmayanları al, top 7 seç
+
+  // Renk → sayı grupları
+  var COLOR_NUMS_7 = {
+    'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+    'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+    'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+  };
+
+  // Pozisyon skoru (son 20 çekiliş)
+  var posScore7 = {}; for (var pi7=1; pi7<=48; pi7++) posScore7[pi7] = 0;
+  allNumsArr.slice(0, Math.min(20,n)).forEach(function(nums) {
+    nums.slice(0,5).forEach(function(num, pos) { posScore7[num] = (posScore7[num]||0) + (5-pos); });
+  });
+
+  // C8 seti
+  var c8Set = {};
+  certain8List.forEach(function(x){ c8Set[x] = 1; });
+
+  // 1. Az çıkan renk sayıları (önceki çekilişte ≤2 sayı çıkan renklerin tüm 6 sayısı)
+  var lowColorNums7 = {};
+  var prevSet7 = {}; prevNums.forEach(function(x){ prevSet7[x]=1; });
+  ALL_COLORS.forEach(function(color) {
+    if (!COLOR_NUMS_7[color]) return;
+    var cnt = COLOR_NUMS_7[color].filter(function(x){ return prevSet7[x]; }).length;
+    if (cnt <= 2) {
+      COLOR_NUMS_7[color].forEach(function(x){ lowColorNums7[x] = 1; });
+    }
+  });
+
+  // 2. Ms havuzundan C8'de olmayan sayılar
+  var msExtra7 = {};
+  if (predMs >= 0 && MS_FIRST_POOL[predMs]) {
+    MS_FIRST_POOL[predMs].slice(0,10).forEach(function(num) {
+      if (!c8Set[num]) msExtra7[num] = 1;
+    });
+  }
+
+  // 3. Öncelikli havuz = az renk + ms dışı (C8 haricinde)
+  var priority7 = {};
+  Object.keys(lowColorNums7).forEach(function(x){ if (!c8Set[x]) priority7[x]=1; });
+  Object.keys(msExtra7).forEach(function(x){ priority7[x]=1; });
+
+  // 4. Sırala: önce öncelikli, sonra geri kalanlar (hepsi C8 haricinde)
+  var sorted7 = [];
+  // Öncelikli olanlar - pozisyon skoruna göre
+  var pri_arr = Object.keys(priority7).map(Number).sort(function(a,b){ return posScore7[b]-posScore7[a]; });
+  // Geri kalanlar
+  var rest_arr = [];
+  for (var ri7=1; ri7<=48; ri7++) {
+    if (!c8Set[ri7] && !priority7[ri7]) rest_arr.push(ri7);
+  }
+  rest_arr.sort(function(a,b){ return posScore7[b]-posScore7[a]; });
+  sorted7 = pri_arr.concat(rest_arr);
+
+  // C7 seçim önceliği: Renk çifti > Renk+OU > Mevcut motor
+  var pairC7Key = (prevColor||'') + '_' + (predColor||'');
+  var specialC7 = PAIR_C7[pairC7Key] || RENK_OU_C7[renkOuKey] || null;
+  // OVER+Siyah C7 grubunu kaldır — gerçek veri düşük (%4.8)
+  if (specialC7 && specialC7.length >= 7) {
+    result.certain7 = specialC7.slice(0,7).sort(function(a,b){return a-b;});
+  } else {
+    result.certain7 = sorted7.slice(0,7).sort(function(a,b){return a-b;});
+  }
+
+  // ── KESİN 6: C8'den 3 + C7'den 3 (büyük-küçük karışık) ──
+  var c8Set = {};
+  certain8List.forEach(function(x){ c8Set[x] = 1; });
+  var c7Only = result.certain7.filter(function(x){ return !c8Set[x]; });
+
+  // C8'den ilk 3 + C7'den ilk 3 (her ikisi kendi motorunun sıralamasına göre)
+  var certain6List = certain8List.slice(0,3).concat(c7Only.slice(0,3));
+  // Eğer C7'den 3 bulunamazsa C8'den tamamla
+  for (var c6j=3; certain6List.length<6 && c6j<certain8List.length; c6j++) {
+    certain6List.push(certain8List[c6j]);
+  }
+
+  // ── KESİN 6: Renk+OU > ÖncekiRenk > ms=955/960 > 4yüksek+2orta ──
+  // ── KESİN 6: MS + ÖNCEKİ RENK + ÖNCEKİ OU bazlı ÖZEL TABLO ──
+  // 2649 çekiliş analizi: Her 5.4 turda 1 6/6, her 173 turda ilk 15'te 6/6, ROI +%1294
+  var MS_PREVRENK_PREVOU_C6 = {
+    '951_Kirmizi_UNDER':[4,40,46,8,9,6],'950_Yesil_OVER':[19,25,5,37,34,7],
+    '951_Sari_OVER':[29,5,40,43,17,26],'951_Mor_OVER':[1,30,27,38,48,35],
+    '954_Kirmizi_OVER':[6,15,7,20,2,18],'950_Turuncu_UNDER':[19,24,11,16,2,1],
+    '950_Mavi_UNDER':[24,29,6,7,33,41],'953_Kahve_OVER':[4,41,2,3,36,48],
+    '952_Sari_OVER':[21,43,28,27,37,44],'951_Kahve_UNDER':[27,30,18,42,39,35],
+    '953_Mavi_UNDER':[26,31,20,17,39,48],'953_Yesil_UNDER':[5,4,7,25,28,32],
+    '953_Mor_UNDER':[23,12,35,13,48,24],'953_Kahve_UNDER':[3,9,41,2,5,13],
+    '952_Kahve_OVER':[17,43,2,9,28,5],'953_Sari_UNDER':[6,39,26,4,3,9],
+    '952_Yesil_UNDER':[14,25,30,21,10,11],'952_Kahve_UNDER':[43,10,21,2,15,23],
+    '951_Siyah_OVER':[36,8,38,30,22,32],'950_Siyah_UNDER':[18,17,5,39,37,28],
+    '951_Mor_UNDER':[2,13,10,35,25,17],'951_Yesil_OVER':[32,19,43,26,11,7],
+    '951_Mavi_UNDER':[12,26,28,6,29,43],'951_Turuncu_OVER':[37,9,43,47,24,5],
+    '950_Siyah_OVER':[1,42,37,25,11,43],'951_Kahve_OVER':[25,3,8,7,37,36],
+    '951_Sari_UNDER':[21,33,36,9,39,2],'952_Siyah_UNDER':[36,3,4,37,41,32],
+    '950_Mor_UNDER':[7,30,23,29,37,35],'950_Sari_OVER':[35,10,3,36,45,24],
+    '951_Turuncu_UNDER':[16,24,33,30,46,42],'951_Kirmizi_OVER':[8,26,5,40,44,16],
+    '951_Mavi_OVER':[34,37,41,45,22,46],'950_Sari_UNDER':[17,30,44,2,12,8],
+    '950_Kahve_UNDER':[34,40,7,13,21,1],'950_Kirmizi_OVER':[45,32,43,42,37,23],
+    '952_Mavi_UNDER':[29,7,10,40,16,6],'952_Mavi_OVER':[3,41,4,19,30,11],
+    '950_Kirmizi_UNDER':[31,3,35,22,10,5],'950_Kahve_OVER':[1,40,15,19,47,28],
+    '949_Kirmizi_UNDER':[36,20,42,43,45,34],'950_Yesil_UNDER':[48,44,31,22,14,33],
+    '949_Kirmizi_OVER':[43,17,21,41,3,36],'949_Yesil_OVER':[10,39,1,38,5,6],
+    '949_Kahve_OVER':[5,22,16,48,24,30],'950_Mor_OVER':[46,27,42,48,24,33],
+    '949_Mor_OVER':[38,14,37,7,6,32],'949_Turuncu_OVER':[32,29,38,37,10,20],
+    '949_Siyah_OVER':[33,13,26,28,31,3],'949_Turuncu_UNDER':[8,3,33,15,37,41],
+    '949_Kahve_UNDER':[27,12,33,48,15,26],'952_Turuncu_UNDER':[6,35,40,22,29,24],
+    '949_Mavi_OVER':[19,21,42,2,6,30],'949_Sari_UNDER':[35,30,40,7,12,47],
+    '950_Mavi_OVER':[32,26,1,40,37,17],'952_Yesil_OVER':[48,22,3,27,42,2],
+    '950_Turuncu_OVER':[37,24,40,32,42,30],'949_Yesil_UNDER':[18,19,20,41,45,48],
+    '949_Mavi_UNDER':[24,8,25,47,38,34],'949_Siyah_UNDER':[9,34,47,11,30,41],
+    '951_Siyah_UNDER':[32,47,23,6,9,45],'952_Mor_OVER':[12,43,13,46,22,35],
+    '952_Kirmizi_OVER':[48,23,26,30,3,29],'952_Sari_UNDER':[4,20,32,34,11,19],
+    '951_Yesil_UNDER':[4,16,44,9,40,46],'952_Mor_UNDER':[37,12,13,44,2,9],
+    '952_Siyah_OVER':[39,18,7,35,11,3],'952_Turuncu_OVER':[36,12,21,38,4,28],
+    '949_Mor_UNDER':[35,40,25,42,7,14],'953_Mor_OVER':[3,4,14,27,10,22],
+    '952_Kirmizi_UNDER':[25,4,16,45,14,15],'949_Sari_OVER':[7,41,42,6,15,19]
+  };
+  var msPrevKey = predMs + '_' + (prevColor||'') + '_' + (prevOU||'');
+  var c6Special = MS_PREVRENK_PREVOU_C6[msPrevKey];
+  if (c6Special && c6Special.length === 6) {
+    result.certain6 = c6Special.slice().sort(function(a,b){return a-b;});
+  } else {
+    // Fallback: tekrar oranı top 6
+    var prevForC6 = (typeof prevNums !== 'undefined' && prevNums && prevNums.length>0) ? prevNums : certain8List;
+    var c6Sorted = prevForC6.slice().sort(function(a,b){
+      return (REPEAT_RATE[b]||0.72)-(REPEAT_RATE[a]||0.72);
+    });
+    var c6Final = c6Sorted.slice(0,6);
+    for (var c6f=0; c6Final.length<6 && c6f<certain8List.length; c6f++) {
+      if (c6Final.indexOf(certain8List[c6f])===-1) c6Final.push(certain8List[c6f]);
+    }
+    result.certain6 = c6Final.sort(function(a,b){return a-b;});
+  }
+  result.certain6_grpA = (certain8List || []).slice(0,3).sort(function(a,b){return a-b;});
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
   // 3 güçlü sinyal:
@@ -2113,51 +1960,6 @@ function startDashboard() {
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Ilk Sayi - 8 Aday</span><span style=\'font-size:9px;color:"+fcrColor+";font-weight:800;padding:2px 6px;border:1px solid "+fcrColor+";border-radius:4px\'>"+fcrLabel+"</span></div><div class=\'nums\'>";';
     h += 'pr.first_candidates.forEach(function(n){h+="<div class=\'num\' style=\'background:#1e3a5f;border:2px solid #3b82f6\'>"+n+"</div>";});';
     h += 'h+="</div></div>";}';
-    h += 'if(pr&&pr.over_under){';
-    h += '  var prevColor=(d.last200&&d.last200.length>0)?d.last200[0].color:"";';
-    h += '  var prevOU=(d.last200&&d.last200.length>0)?d.last200[0].over_under:"";';
-    h += '  var isSariSiyah=(prevColor==="Sari"||prevColor==="Siyah");';
-    h += '  var isOver=(prevOU==="OVER");';
-    h += '  var playSignal=isSariSiyah&&isOver;';
-    h += '  var sigBg=playSignal?"linear-gradient(135deg,#052e16,#14532d)":"linear-gradient(135deg,#1a0a0a,#2a0a0a)";';
-    h += '  var sigBorder=playSignal?"#22c55e":"#ef4444";';
-    h += '  var sigIcon=playSignal?"🟢":"🔴";';
-    h += '  var sigTitle=playSignal?"OYNA!":"BEKLEME";';
-    h += '  var sigTitleColor=playSignal?"#4ade80":"#f87171";';
-    h += '  var sigDesc=playSignal?"Önceki tur: "+prevColor+" + OVER → Büyük çarpan sinyali aktif":"Önceki tur: "+prevColor+" + "+prevOU+" → Büyük çarpan bekleme zonu";';
-    h += '  var sigSubColor=playSignal?"#86efac":"#fca5a5";';
-    h += '  var sigAnim=playSignal?"animation:pulse6 1.2s infinite":"";';
-    h += '  h+="<style>@keyframes pulse6{0%,100%{box-shadow:0 0 0 0 #22c55e55}50%{box-shadow:0 0 0 8px #22c55e00}}</style>";';
-    h += '  h+="<div style=\'background:"+sigBg+";border:2px solid "+sigBorder+";border-radius:14px;padding:14px 16px;margin-bottom:12px;"+sigAnim+"\'>";';
-    h += '  h+="<div style=\'display:flex;align-items:center;justify-content:space-between\'>";';
-    h += '  h+="<div style=\'display:flex;align-items:center;gap:8px\'>";';
-    h += '  h+="<span style=\'font-size:22px\'>"+sigIcon+"</span>";';
-    h += '  h+="<span style=\'font-size:18px;font-weight:900;color:"+sigTitleColor+";letter-spacing:1px\'>"+sigTitle+"</span>";';
-    h += '  h+="</div>";';
-    h += '  h+="<div style=\'text-align:right\'>";';
-    h += '  h+="<div style=\'font-size:9px;color:#6b7280;font-weight:700;margin-bottom:2px\'>KESİN 6 SİNYALİ</div>";';
-    h += '  h+="<div style=\'font-size:10px;font-weight:800;color:"+sigTitleColor+"\'>"+( playSignal?"Sarı/Siyah + OVER":"Koşul Sağlanmıyor")+"</div>";';
-    h += '  h+="</div>";';
-    h += '  h+="</div>";';
-    h += '  h+="<div style=\'margin-top:8px;font-size:11px;color:"+sigSubColor+";font-weight:600\'>"+sigDesc+"</div>";';
-    h += '  if(playSignal){';
-    h += '    h+="<div style=\'margin-top:8px;display:flex;gap:6px\'>";';
-    h += '    h+="<div style=\'flex:1;background:#052e16;border:1px solid #16a34a;border-radius:8px;padding:6px;text-align:center\'>";';
-    h += '    h+="<div style=\'font-size:9px;color:#4ade80;font-weight:700\'>BÜYÜK ÇARPAN</div>";';
-    h += '    h+="<div style=\'font-size:16px;font-weight:900;color:#4ade80\'>%33</div>";';
-    h += '    h+="</div>";';
-    h += '    h+="<div style=\'flex:1;background:#052e16;border:1px solid #16a34a;border-radius:8px;padding:6px;text-align:center\'>";';
-    h += '    h+="<div style=\'font-size:9px;color:#4ade80;font-weight:700\'>6/6 ORANI</div>";';
-    h += '    h+="<div style=\'font-size:16px;font-weight:900;color:#4ade80\'>%30</div>";';
-    h += '    h+="</div>";';
-    h += '    h+="<div style=\'flex:1;background:#052e16;border:1px solid #16a34a;border-radius:8px;padding:6px;text-align:center\'>";';
-    h += '    h+="<div style=\'font-size:9px;color:#4ade80;font-weight:700\'>ROI</div>";';
-    h += '    h+="<div style=\'font-size:16px;font-weight:900;color:#4ade80\'>%642</div>";';
-    h += '    h+="</div>";';
-    h += '    h+="</div>";';
-    h += '  }';
-    h += '  h+="</div>";';
-    h += '}';
     h += 'if(pr&&pr.certain6&&pr.certain6.length>0){';
     h += 'var sig=pr.signals||{};';
     h += 'var c6b=sig.siyahFull?"#00ff88":sig.badMs66?"#ef4444":(sig.sig66>=2||sig.c6strong)?"#22c55e":sig.sig66>=1?"#facc15":"#5a6180";';
