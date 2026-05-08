@@ -1975,9 +1975,7 @@ function startDashboard() {
     h += 'var c7l=(sig7.badMs77||sig7.c7weak)?"ZAYIF":sig7.sig77>=2?"COK GUCLU":sig7.sig77>=1||sig7.c7strong?"GUCLU":"NORMAL";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 7 Sayi</span><span style=\'font-size:9px;color:"+c7b+";font-weight:800;padding:2px 6px;border:1px solid "+c7b+";border-radius:4px\'>"+c7l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain7.forEach(function(n){';
-    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;';
-    h += 'var in6=(pr.certain6||[]).indexOf(n)>=0;var nbg=in6?"#facc15":"#2a2000";var nbr=in6?"2px solid #facc15":"2px solid #d4a843";var ntc=in6?"#1a1200":"#e5c07b";'
-    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+";color:"+ntc+"\'>"+ n+"</div>";';
+    h += 'h+="<div class=\'num\' style=\'background:#2a2000;border:2px solid #d4a843;color:#e5c07b\'>"+ n+"</div>";'
     h += '});';
     h += '';
     h += 'h+="</div></div>";}';
