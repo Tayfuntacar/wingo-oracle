@@ -1356,11 +1356,24 @@ function predict(draws) {
       if (!prevSet[ds4]) dynScores[ds4] += 20;
     }
 
-    // Top 6 seç
-    var dynSorted = [];
-    for (var ds5=1; ds5<=48; ds5++) dynSorted.push(ds5);
-    dynSorted.sort(function(a,b){ return dynScores[b]-dynScores[a]; });
-    result.certain6 = dynSorted.slice(0,6).sort(function(a,b){return a-b;});
+    // HAVUZ: 9000+ çekiliş analizi - ilk6 + jackpot pozisyonlarında en çok çıkan 15 sayı
+    var C6_POOL = [2, 6, 13, 16, 17, 19, 23, 27, 31, 37, 39, 40, 44, 46, 47];
+
+    // Son 10 roundda havuz sayılarının ilk6 + JP pozisyonlarında çıkma sıklığı
+    var recentUsed = {};
+    allNumsArr.slice(0, Math.min(10, n)).forEach(function(nums) {
+      var checkPos = [0,1,2,3,4,5,14,18,22,26,34];
+      checkPos.forEach(function(idx){ if(nums[idx]) recentUsed[nums[idx]] = (recentUsed[nums[idx]]||0)+1; });
+    });
+
+    // Havuzu skora göre sırala: genel skor - son kullanım cezası
+    var poolSorted = C6_POOL.slice().sort(function(a, b) {
+      var scoreA = dynScores[a] - (recentUsed[a]||0) * 30;
+      var scoreB = dynScores[b] - (recentUsed[b]||0) * 30;
+      return scoreB - scoreA;
+    });
+
+    result.certain6 = poolSorted.slice(0,6).sort(function(a,b){return a-b;});
   })();
   result.certain6_grpA = (certain8List || []).slice(0,3).sort(function(a,b){return a-b;});
 
