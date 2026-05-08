@@ -1502,7 +1502,7 @@ function predict(draws) {
   var c6Arr = TRIPLE_ILK15_C6[tripleKey] || MS_RENK_ILK15_C6[msRenkKey] || RENK_ILK15_C6[predColor] || [33,25,41,9,17,1];
   result.certain6 = c6Arr.slice().sort(function(a,b){return a-b;});
 
-  result.certain6_grpA = certain8List.slice(0,3).sort(function(a,b){return a-b;});
+  result.certain6_grpA = c6Arr.slice(0,3).sort(function(a,b){return a-b;});
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
   // 3 güçlü sinyal:
