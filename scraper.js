@@ -862,10 +862,12 @@ function predict(draws) {
     });
 
     // Önceki first sayısına göre geçiş bonusu
-    var prevFirst = firstList[0];
-    var transTarget = FIRST_TRANSITION[prevFirst];
-    if (transTarget && ns[transTarget] !== undefined) {
-      ns[transTarget] += 20; // güçlü geçiş sinyali
+    var prevFirstNum = allNumsArr[0] && allNumsArr[0].length > 0 ? allNumsArr[0][0] : null;
+    if (prevFirstNum) {
+      var transTarget = FIRST_TRANSITION[prevFirstNum];
+      if (transTarget && ns[transTarget] !== undefined) {
+        ns[transTarget] += 20; // güçlü geçiş sinyali
+      }
     }
   })();
 
