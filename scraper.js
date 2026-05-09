@@ -1356,6 +1356,43 @@ function predict(draws) {
     });
     Object.keys(recentAll).forEach(function(x){ scores[parseInt(x)] -= recentAll[x]*15; });
 
+    // RENK DOYGUNLUK SİNYALİ
+    // Önceki turda bir renk 4+ sayı çıkardıysa sonraki turda o renk azalır/artar
+    var COLOR_NUMS_MAP = {
+      'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+      'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+      'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+    };
+    // Son 1 turdaki renk doygunluğunu hesapla
+    if (allNumsArr[0] && allNumsArr[0].length > 0) {
+      var prevFirst15Set = {};
+      allNumsArr[0].slice(0,15).forEach(function(x){ prevFirst15Set[x]=1; });
+      Object.keys(COLOR_NUMS_MAP).forEach(function(color) {
+        var cnums = COLOR_NUMS_MAP[color];
+        var cnt = cnums.filter(function(x){ return prevFirst15Set[x]; }).length;
+        if (cnt >= 4) {
+          // Kahve/Kirmizi 4+: sonraki tur bu renk düşüyor -> ceza
+          if (color === 'Kahve' || color === 'Kirmizi') {
+            cnums.forEach(function(x){ scores[x] -= 20; });
+          }
+          // Turuncu 4+: sonraki tur hafif artıyor -> bonus
+          if (color === 'Turuncu') {
+            cnums.forEach(function(x){ scores[x] += 10; });
+          }
+        }
+        if (cnt >= 5) {
+          // Yesil 5+: sonraki tur belirgin artış -> güçlü bonus
+          if (color === 'Yesil') {
+            cnums.forEach(function(x){ scores[x] += 25; });
+          }
+          // Mavi 5+: sonraki tur düşüyor -> ceza
+          if (color === 'Mavi') {
+            cnums.forEach(function(x){ scores[x] -= 25; });
+          }
+        }
+      });
+    }
+
     // Top 6 seç
     var ranked = Object.keys(scores).map(Number).sort(function(a,b){ return scores[b]-scores[a]; });
     result.certain6 = ranked.slice(0,6).sort(function(a,b){return a-b;});
