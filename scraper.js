@@ -770,10 +770,25 @@ function predict(draws) {
   };
   var MS_RENK_FIRST = {
     '957_Turuncu':30,'956_Mor':32,'957_Mor':40,
-    '958_Siyah':31,'959_Turuncu':30,'958_Mavi':27,'957_Yesil':26
+    '958_Siyah':31,'959_Turuncu':30,'958_Mavi':27,'957_Yesil':26,
+    '960_Mavi':27,'960_Turuncu':27,'961_Kirmizi':12,'961_Turuncu':6
   };
+  // 7400+ analiz: MS=959 -> 30, MS=960 -> 27, MS=961 -> 12 (en güçlü sinyaller)
+  var MS_STRONG_FIRST = {959:30, 960:27, 961:12};
+
+  // Önceki first -> bu tur first geçiş (7400+ analiz, rastgelenin 3-4 katı)
+  var FIRST_TRANSITION = {12:32,27:37,25:2,26:46,42:19,32:2,34:5,7:17,20:4,35:31,36:43};
+
+  // Renk doygunluğu (4+) sonrası en çok çıkan first sayılar
+  var COLOR_SAT_FIRST = {
+    'Kahve':[6,13,46,25,29],'Kirmizi':[39,28,32,29,26],
+    'Yesil':[10,19,33,37,43],'Turuncu':[31,38,16,14,35],
+    'Mavi':[10,43,27,35,29],'Siyah':[21,29,45,30,48],
+    'Mor':[36,7,43,40,23],'Sari':[27,13,31,34,35]
+  };
+
   var msRenkFirstKey = predMs + '_' + predColor;
-  var msRenkFirstNum = MS_RENK_FIRST[msRenkFirstKey] || null;
+  var msRenkFirstNum = MS_RENK_FIRST[msRenkFirstKey] || MS_STRONG_FIRST[predMs] || null;
   var colorNumsFirst = COLOR_NUMS_FIRST[predColor] || [];
 
   // OU filtresini uygula
@@ -824,6 +839,35 @@ function predict(draws) {
     'Siyah':   [38,24,10,29,31],
     'Mor':     [37,41,29,27,40]
   };
+
+  // Renk doygunluk sinyali: önceki turda bir renk 4+ sayı çıkardıysa
+  // o rengin saturation sonrası first adaylarını öne al
+  (function() {
+    var prevF15 = allNumsArr[0] ? allNumsArr[0].slice(0,15) : [];
+    var prevF15Set = {};
+    prevF15.forEach(function(x){ prevF15Set[x]=1; });
+    var COLOR_NUMS_ALL = {
+      'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
+      'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
+      'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
+    };
+    ALL_COLORS.forEach(function(color) {
+      var cnt = (COLOR_NUMS_ALL[color]||[]).filter(function(x){ return prevF15Set[x]; }).length;
+      if (cnt >= 4 && COLOR_SAT_FIRST[color]) {
+        // Bu renk doydu - saturation sonrası first adaylarını NS'ye ekle
+        COLOR_SAT_FIRST[color].forEach(function(n, i) {
+          if (ns[n] !== undefined) ns[n] += (5-i) * 3;
+        });
+      }
+    });
+
+    // Önceki first sayısına göre geçiş bonusu
+    var prevFirst = firstList[0];
+    var transTarget = FIRST_TRANSITION[prevFirst];
+    if (transTarget && ns[transTarget] !== undefined) {
+      ns[transTarget] += 20; // güçlü geçiş sinyali
+    }
+  })();
 
   // ── SİNYAL TESPİTİ: 1900 çekiliş analizinden ──
   // C6 güçlü ms (6/6 oranı %15+)
