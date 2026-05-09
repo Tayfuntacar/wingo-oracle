@@ -1292,107 +1292,71 @@ function predict(draws) {
     certain6List.push(certain8List[c6j]);
   }
 
-  // ── KESİN 6: DİNAMİK MOTOR ──
-  // Son 30 çekilişte soğuk sayılar + önceki çekiliş tekrar oranı + MS+Renk bonusu
+  // ── KESİN 6: DİNAMİK MOTOR (7400+ çekiliş analizi) ──
+  // Her turda farklı 6 sayı: soğuk skor + MS bazlı bonus + çeşitlilik
   (function() {
     var dynScores = {};
-    for (var ds=1; ds<=48; ds++) dynScores[ds] = 0;
+    for (var ds = 1; ds <= 48; ds++) dynScores[ds] = 0;
 
-    // 1. Soğuk skor: son 30 çekilişte ilk 15'te az görülen sayılar
-    var recentAll = allNumsArr.slice(0, Math.min(30, n));
+    // 1. Soğuk skor: son 20 çekilişte az görülen sayılar öne
+    var coldWindow = Math.min(20, n);
     var coldFreq = {};
-    for (var ds2=1; ds2<=48; ds2++) coldFreq[ds2] = 0;
-    recentAll.forEach(function(nums) {
-      nums.slice(0,15).forEach(function(num) { coldFreq[num]++; });
+    for (var dc = 1; dc <= 48; dc++) coldFreq[dc] = 0;
+    allNumsArr.slice(0, coldWindow).forEach(function(nums) {
+      nums.forEach(function(num) { coldFreq[num] = (coldFreq[num]||0) + 1; });
     });
-    for (var ds3=1; ds3<=48; ds3++) {
-      dynScores[ds3] += (30 - (coldFreq[ds3]||0)) * 4; // az görülene yüksek skor
+    for (var dc2 = 1; dc2 <= 48; dc2++) {
+      dynScores[dc2] += (coldWindow - (coldFreq[dc2]||0)) * 3;
     }
 
-    // 2. Önceki çekilişin sayıları: tekrar oranı yüksek olanları öne al
-    var REPEAT_BONUS = {
-      39:76,6:75,43:75,40:75,47:74,35:74,19:74,41:74,18:74,46:74,
-      38:73,2:73,30:73,14:73,27:72,32:72,16:72,8:72,13:72,42:72
+    // 2. MS bazlı bonus (yüksek MS = daha erken tamamlanma)
+    var MS_BONUS = {};
+    if (predMs >= 959) {
+      MS_BONUS = {1:40, 8:40, 28:40, 30:40, 31:40, 48:40,
+                  25:30, 22:30, 45:30, 9:25, 13:25};
+    } else if (predMs >= 956) {
+      MS_BONUS = {3:35, 9:35, 27:35, 31:35, 40:35, 41:35,
+                  8:25, 30:25, 14:20, 32:20};
+    } else {
+      MS_BONUS = {3:30, 9:30, 27:30, 31:30, 40:30, 41:30,
+                  42:20, 30:20, 35:20, 8:15, 14:15};
+    }
+    Object.keys(MS_BONUS).forEach(function(n) {
+      dynScores[parseInt(n)] += MS_BONUS[n];
+    });
+
+    // 3. Önceki renk sinyali
+    var PREV_COLOR_BONUS = {
+      'Sari':   {41:20, 33:20, 17:15},
+      'Yesil':  {42:20, 10:20, 18:15},
+      'Mavi':   {35:20, 27:20, 43:15},
+      'Kirmizi':{28:20, 36:20, 12:15},
+      'Kahve':  {37:20, 13:20, 21:15},
+      'Turuncu':{30:20, 46:20, 14:15},
+      'Siyah':  {31:20, 47:20, 23:15},
+      'Mor':    {40:20, 32:20, 16:15}
     };
-    if (prevNums && prevNums.length > 0) {
-      prevNums.forEach(function(num) {
-        dynScores[num] += (REPEAT_BONUS[num] || 70);
+    var pcBonus = PREV_COLOR_BONUS[prevColor] || {};
+    Object.keys(pcBonus).forEach(function(n) {
+      dynScores[parseInt(n)] += pcBonus[n];
+    });
+
+    // 4. Çeşitlilik: son 3 turda C6'da olan sayılara ceza
+    var recentC6 = {};
+    allNumsArr.slice(0, Math.min(3, n)).forEach(function(nums) {
+      nums.slice(0, 6).forEach(function(x) {
+        recentC6[x] = (recentC6[x]||0) + 1;
       });
-    }
-
-    // 3. MS + önceki renk bonusu (güçlü sinyaller)
-    var MS_RENK_BONUS_DYN = {
-      '955_Siyah':[47],'956_Sari':[20,42],'952_Siyah':[9,23,32],
-      '953_Yesil':[38],'957_Siyah':[32,47],'956_Mor':[32],
-      '954_Mor':[26],'956_Yesil':[30],'953_Siyah':[15],
-      '958_Kahve':[36],'957_Sari':[47],'959_Turuncu':[44],
-      '958_Mavi':[23],'958_Kirmizi':[23]
-    };
-    var msRenkDynKey = predMs + '_' + (prevColor||'');
-    var msRenkDynNums = MS_RENK_BONUS_DYN[msRenkDynKey] || [];
-    msRenkDynNums.forEach(function(num) { dynScores[num] += 60; });
-
-    // 4. MS+MS geçiş bonusu
-    var MS_MS_DYN = {
-      '957_955':[37],'958_959':[6],'958_955':[21,48],
-      '954_957':[9],'959_955':[31],'959_960':[13],
-      '956_952':[7],'953_957':[2],'951_952':[25],'958_958':[43]
-    };
-    var msMsDynKey = lastMs + '_' + predMs;
-    (MS_MS_DYN[msMsDynKey]||[]).forEach(function(num) { dynScores[num] += 70; });
-
-    // 5. Renk çifti bonusu
-    var COLOR_PAIR_DYN = {
-      'Turuncu_Siyah':[25],'Siyah_Mor':[24],'Kirmizi_Siyah':[15],
-      'Turuncu_Kirmizi':[22],'Siyah_Siyah':[5],'Mor_Yesil':[12],'Yesil_Mor':[11]
-    };
-    var pairDynKey = (prevColor1||'') + '_' + (prevColor0||'');
-    (COLOR_PAIR_DYN[pairDynKey]||[]).forEach(function(num) { dynScores[num] += 50; });
-
-    // 6. Önceki çekilişte HİÇ çıkmayan sayılara ekstra bonus (tam soğuk)
-    var prevSet = {};
-    (prevNums||[]).forEach(function(x){ prevSet[x]=1; });
-    for (var ds4=1; ds4<=48; ds4++) {
-      if (!prevSet[ds4]) dynScores[ds4] += 20;
-    }
-
-    // MS BAZLI OPTİMAL C6 - 7400+ çekiliş ödeme optimizasyonu
-    // Hedef: 6. sayının en erken pozisyonda çıkması = en yüksek çarpan
-    // MS>=959: [1,8,28,30,31,48] -> avg 171x (rastgele 7.7x, 22 kat fark!)
-    // Genel:   [3,9,27,31,40,41] -> avg 20.7x (2.7 kat fark)
-
-    var MS_OPTIMAL = {
-      // MS>=959: avg 171x ödeme - erken pozisyon optimizasyonu
-      959: [1, 8, 28, 30, 31, 48],
-      960: [1, 8, 28, 30, 31, 48],
-      961: [1, 8, 28, 30, 31, 48],
-      962: [1, 8, 28, 30, 31, 48],
-      963: [1, 8, 28, 30, 31, 48],
-      964: [1, 8, 28, 30, 31, 48],
-      965: [1, 8, 28, 30, 31, 48],
-      // MS=956-958: ara grup
-      956: [3, 9, 27, 31, 40, 41],
-      957: [3, 9, 27, 31, 40, 41],
-      958: [3, 9, 27, 31, 40, 41],
-    };
-    // Genel (MS 949-955): avg 20.7x
-    var DEFAULT_C6 = [3, 9, 27, 31, 40, 41];
-
-    // MS değerine göre optimal C6 seç
-    var optimalC6 = MS_OPTIMAL[predMs] || DEFAULT_C6;
-
-    // Dinamik ince ayar: son 5 roundda bu sayılardan hangisi az çıktı?
-    var recentC6Used = {};
-    allNumsArr.slice(0, Math.min(5, n)).forEach(function(nums) {
-      nums.forEach(function(x){ recentC6Used[x] = (recentC6Used[x]||0)+1; });
+    });
+    Object.keys(recentC6).forEach(function(n) {
+      dynScores[parseInt(n)] -= recentC6[n] * 20;
     });
 
-    // Havuzdan en az kullanılanları öne al (değişkenlik için)
-    var c6Sorted = optimalC6.slice().sort(function(a,b){
-      return (recentC6Used[a]||0) - (recentC6Used[b]||0);
-    });
-
-    result.certain6 = c6Sorted.slice(0,6).sort(function(a,b){return a-b;});
+    // Top 6 seç
+    var ranked = [];
+    for (var dr = 1; dr <= 48; dr++) ranked.push(dr);
+    ranked.sort(function(a, b) { return dynScores[b] - dynScores[a]; });
+    result.certain6 = ranked.slice(0, 6).sort(function(a,b){return a-b;});
   })();
   result.certain6_grpA = (certain8List || []).slice(0,3).sort(function(a,b){return a-b;});
 
@@ -2020,7 +1984,7 @@ function startDashboard() {
     h += 'var c7l=(sig7.badMs77||sig7.c7weak)?"ZAYIF":sig7.sig77>=2?"COK GUCLU":sig7.sig77>=1||sig7.c7strong?"GUCLU":"NORMAL";';
     h += 'h+="<div class=\'card\'><div style=\'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px\'><span class=\'title\' style=\'margin-bottom:0\'>Kesin Cikacak - 7 Sayi</span><span style=\'font-size:9px;color:"+c7b+";font-weight:800;padding:2px 6px;border:1px solid "+c7b+";border-radius:4px\'>"+c7l+"</span></div><div class=\'nums\'>";';
     h += 'pr.certain7.forEach(function(n){';
-    h += 'h+="<div class=\'num\' style=\'background:#2a2000;border:2px solid #d4a843;color:#e5c07b\'>"+ n+"</div>";'
+    h += 'h+="<div class=\'num\' style=\'background:"+nbg+";border:"+nbr+";color:"+ntc+"\'>"+ n+"</div>";';
     h += '});';
     h += '';
     h += 'h+="</div></div>";}';
