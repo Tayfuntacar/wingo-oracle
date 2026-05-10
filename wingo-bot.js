@@ -37,7 +37,6 @@ async function initBrowser() {
   });
   page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 900 });
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
   console.log('Browser hazir');
 }
 
@@ -48,69 +47,64 @@ async function login() {
 
   // Prijava butonuna tikla
   await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('button'));
-    const btn = btns.find(b => b.textContent.trim() === 'Prijava');
+    const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Prijava');
     if (btn) btn.click();
   });
   await sleep(2000);
 
-  // Password var mi?
-  const passInput = await page.$('input[type="password"]');
-  if (!passInput) { console.log('Modal acilmadi!'); return; }
-
-  // Username inputuna tikla ve yaz
-  const inputs = await page.$$('input');
-  for (const inp of inputs) {
-    const type = await inp.evaluate(el => el.type);
-    const visible = await inp.evaluate(el => el.offsetParent !== null);
-    if (type !== 'password' && visible) {
-      await inp.click();
-      await inp.type(USERNAME, { delay: 80 });
-      console.log('Username yazildi');
-      break;
-    }
-  }
-
-  // Password inputuna tikla ve yaz
-  await passInput.click();
-  await passInput.type(PASSWORD, { delay: 80 });
-  console.log('Password yazildi');
-
+  // Tum inputlari JS ile doldur ve submit et
+  const result = await page.evaluate((user, pass) => {
+    const inputs = Array.from(document.querySelectorAll('input'));
+    const passInput = inputs.find(i => i.type === 'password');
+    if (!passInput) return 'no-password-input';
+    
+    // Username - password'den onceki input
+    const userInput = inputs.slice(0, inputs.indexOf(passInput)).pop();
+    
+    const setVal = (el, val) => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeInputValueSetter.call(el, val);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    
+    if (userInput) setVal(userInput, user);
+    setVal(passInput, pass);
+    
+    return 'ok';
+  }, USERNAME, PASSWORD);
+  
+  console.log('Input result:', result);
   await sleep(500);
-  await page.screenshot({ path: '/root/wingo-oracle/s1-filled.png' });
+  await page.screenshot({ path: '/root/wingo-oracle/s1.png' });
 
-  // Enter bas
-  await passInput.press('Enter');
-  await sleep(5000);
-
-  await page.screenshot({ path: '/root/wingo-oracle/s2-after.png' });
-  console.log('Login sonrasi URL:', page.url());
-
-  // Giris basarili mi kontrol et
-  const loggedIn = await page.evaluate(() => {
-    const text = document.body.innerText;
-    return !text.includes('Registracija') || text.includes('€') || text.includes('Adem');
+  // Submit - form submit veya Enter
+  await page.evaluate(() => {
+    const form = document.querySelector('form');
+    if (form) { form.submit(); return; }
+    const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Prijava');
+    if (btn) btn.click();
   });
-  console.log('Giris basarili:', loggedIn);
+  
+  await sleep(5000);
+  await page.screenshot({ path: '/root/wingo-oracle/s2.png' });
+  console.log('URL:', page.url());
 
   // Wingo'ya git
   await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 30000 });
   await sleep(5000);
-  await page.screenshot({ path: '/root/wingo-oracle/s3-wingo.png' });
+  await page.screenshot({ path: '/root/wingo-oracle/s3.png' });
 
-  // Sayfadaki butonlar - 1-48 arasi sayilar var mi?
-  const numBtns = await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('button'));
-    return btns.map(b => b.textContent.trim()).filter(t => /^\d+$/.test(t) && parseInt(t) >= 1 && parseInt(t) <= 48);
-  });
-  console.log('Sayi butonlari:', numBtns.length > 0 ? numBtns.slice(0,10) : 'YOK');
+  const numBtns = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).map(b=>b.textContent.trim()).filter(t=>/^\d+$/.test(t))
+  );
+  console.log(`Sayi butonlari: ${numBtns.length} adet`, numBtns.slice(0,10));
 
   if (numBtns.length === 0) {
-    // Tum butonlari goster
-    const allBtns = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('button')).map(b=>b.textContent.trim()).filter(t=>t).slice(0,30)
+    const all = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('button')).map(b=>b.textContent.trim()).filter(t=>t).slice(0,20)
     );
-    console.log('Tum butonlar:', allBtns);
+    console.log('Tum butonlar:', all);
   }
 }
 
@@ -118,8 +112,7 @@ async function placeBet(numbers) {
   try {
     // Clear
     await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const c = btns.find(b => /clear|obrisi|ponisti/i.test(b.textContent));
+      const c = Array.from(document.querySelectorAll('button')).find(b => /clear|obrisi/i.test(b.textContent));
       if (c) c.click();
     });
     await sleep(300);
@@ -128,41 +121,36 @@ async function placeBet(numbers) {
     let found = 0;
     for (const num of numbers) {
       const ok = await page.evaluate((n) => {
-        const all = Array.from(document.querySelectorAll('button'));
-        const el = all.find(e => e.textContent.trim() === String(n) && e.offsetParent !== null);
+        const el = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === String(n) && b.offsetParent !== null);
         if (el) { el.click(); return true; }
         return false;
       }, num);
       if (ok) { found++; await sleep(150); }
     }
+    if (found === 0) { console.log('Hic sayi secilemedi'); return false; }
     console.log(`${found}/${numbers.length} sayi secildi`);
 
     // Miktar
-    const amtInputs = await page.$$('input');
-    for (const inp of amtInputs) {
-      const visible = await inp.evaluate(el => el.offsetParent !== null);
-      if (visible) {
-        await inp.click({ clickCount: 3 });
-        await inp.type(BET_AMOUNT);
-        break;
+    await page.evaluate((amt) => {
+      const inp = Array.from(document.querySelectorAll('input')).find(i => i.offsetParent !== null);
+      if (inp) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, amt);
+        inp.dispatchEvent(new Event('input', {bubbles:true}));
       }
-    }
+    }, BET_AMOUNT);
     await sleep(300);
 
     // Bahis koy
     const ok = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const b = btns.find(b => /uplati|bet|place|potvrdi/i.test(b.textContent) && b.offsetParent !== null);
+      const b = Array.from(document.querySelectorAll('button')).find(b => /uplati|bet|potvrdi/i.test(b.textContent) && b.offsetParent !== null);
       if (b) { b.click(); return b.textContent.trim(); }
       return null;
     });
 
     if (ok) { console.log('Bahis:', ok); await sleep(2000); return true; }
     return false;
-  } catch(e) {
-    console.log('Hata:', e.message);
-    return false;
-  }
+  } catch(e) { console.log('Hata:', e.message); return false; }
 }
 
 async function run() {
