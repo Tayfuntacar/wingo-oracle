@@ -1391,13 +1391,16 @@ function predict(draws) {
     };
     (COLOR_BONUS[prevColor]||[]).forEach(function(n2, i){ scores[n2] += (6-i)*3; });
 
-    // En çok çıkan (most drawn) bonus - son 100 tur
-    var MOST_DRAWN = [2,35,8,11,37,6,32,27,38,39];
-    MOST_DRAWN.forEach(function(n2){ scores[n2] += 10; });
-
-    // En az çıkan (least drawn) bonus - uzun süredir görülmeyen
-    var LEAST_DRAWN = [36,3,47,48,29,24,40,26,22,30];
-    LEAST_DRAWN.slice(0,5).forEach(function(n2){ scores[n2] += 8; });
+    // Son 10 çekilişte en çok/az çıkan sayılar - Volcanobet statistics ile aynı
+    var last10Freq = {};
+    allNumsArr.slice(0, Math.min(10, n)).forEach(function(nums) {
+      nums.forEach(function(x){ last10Freq[x] = (last10Freq[x]||0) + 1; });
+    });
+    var last10Sorted = Object.keys(last10Freq).map(Number).sort(function(a,b){ return (last10Freq[b]||0)-(last10Freq[a]||0); });
+    // Most drawn bonus
+    last10Sorted.slice(0,5).forEach(function(n2){ scores[n2] += 12; });
+    // Least drawn - soğuk sayılar güçlü bonus
+    last10Sorted.slice(-5).forEach(function(n2){ scores[n2] += 15; });
 
     // Son 3 turda çıkan sayılara ceza (tekrar azaltma)
     var recentAll = {};
