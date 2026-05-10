@@ -210,10 +210,7 @@ function connect() {
                 }
                 if (j.target === 'ReceivePartialResult' && j.arguments && j.arguments[0] && j.arguments[0].ballNumbers && j.arguments[0].ballNumbers.length === 35) {
                   var a = j.arguments[0];
-                  // TEMP LOG - tum alanlar
-                  var allKeys = Object.keys(a).filter(function(k){ return k !== 'ballNumbers'; });
-                  console.log('WS_FIELDS: ' + JSON.stringify(allKeys));
-                  allKeys.forEach(function(k){ console.log('WS_FIELD ' + k + ': ' + JSON.stringify(a[k])); });
+
                   var wsRound = parseInt(a.number);
                   // Aynı global round'u tekrar işleme (hafta değişince aynı round no olabilir)
                   var wsGlobal = (currentWeekNumber * 10000) + wsRound;
