@@ -41,13 +41,13 @@ async function initBrowser() {
 async function login() {
   console.log('Giris yapiliyor...');
   await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForTimeout(2000);
+  await new Promise(r => setTimeout(r,(2000);
 
   // Login butonu
   const loginBtn = await page.$('[class*="login"], [class*="Login"], button[class*="auth"]');
   if (loginBtn) {
     await loginBtn.click();
-    await page.waitForTimeout(1000);
+    await new Promise(r => setTimeout(r,(1000);
   }
 
   // Username ve password
@@ -56,7 +56,7 @@ async function login() {
   
   // Submit
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(3000);
+  await new Promise(r => setTimeout(r,(3000);
   console.log('Giris tamamlandi');
 }
 
@@ -66,20 +66,20 @@ async function placeBet(numbers) {
     
     // Wingo sayfasina git
     await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 20000 });
-    await page.waitForTimeout(2000);
+    await new Promise(r => setTimeout(r,(2000);
 
     // Sayilari sec
     for (const num of numbers) {
       const selector = `[data-number="${num}"], button:has-text("${num}")`;
       try {
         await page.click(selector);
-        await page.waitForTimeout(200);
+        await new Promise(r => setTimeout(r,(200);
       } catch(e) {
         // XPath ile dene
         const elements = await page.$x(`//button[text()="${num}"] | //*[@data-value="${num}"]`);
         if (elements.length > 0) {
           await elements[0].click();
-          await page.waitForTimeout(200);
+          await new Promise(r => setTimeout(r,(200);
         }
       }
     }
@@ -95,7 +95,7 @@ async function placeBet(numbers) {
     const betBtn = await page.$('button[class*="bet"], button[class*="Bet"], button[class*="place"]');
     if (betBtn) {
       await betBtn.click();
-      await page.waitForTimeout(1000);
+      await new Promise(r => setTimeout(r,(1000);
       console.log(`Bahis konuldu: ${numbers} - ${BET_AMOUNT}€`);
       return true;
     }
