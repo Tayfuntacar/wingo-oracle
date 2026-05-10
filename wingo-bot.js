@@ -14,6 +14,7 @@ let browser, page;
 let currentRound = -1;
 let betsRemaining = 0;
 let currentNumbers = [];
+let isLoggedIn = false;
 
 async function connectDB() {
   await db.connect();
@@ -36,156 +37,146 @@ async function initBrowser() {
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   });
   page = await browser.newPage();
-  await page.setViewport({ width: 390, height: 844 });
-  await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15');
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   console.log('Browser hazir');
 }
 
-async function clickButtonByText(text) {
-  return await page.evaluate((txt) => {
-    const btns = Array.from(document.querySelectorAll('button'));
-    const btn = btns.find(b => b.textContent.trim() === txt);
-    if (btn) { btn.click(); return true; }
-    return false;
-  }, text);
-}
-
 async function login() {
-  console.log('Giris yapiliyor...');
-  await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 30000 });
+  console.log('Login sayfasi aciliyor...');
+  
+  // Direkt login sayfasina git
+  await page.goto('https://www.volcanobet.me/login', { waitUntil: 'networkidle2', timeout: 30000 });
   await sleep(3000);
+  
+  await page.screenshot({ path: '/root/wingo-oracle/s1-login.png' });
+  
+  // Buton ve input listesi
+  const pageInfo = await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t=>t);
+    const inputs = Array.from(document.querySelectorAll('input')).map(i => ({type:i.type, placeholder:i.placeholder, name:i.name}));
+    return { btns, inputs, url: window.location.href };
+  });
+  console.log('URL:', pageInfo.url);
+  console.log('Butonlar:', pageInfo.btns.slice(0,10));
+  console.log('Inputlar:', pageInfo.inputs.slice(0,5));
 
-  // Prijava butonuna js ile tikla
-  const clicked = await clickButtonByText('Prijava');
-  console.log('Login btn tiklandi:', clicked);
-  await sleep(2000);
-
-  // Password inputunu bul
-  const passInput = await page.$('input[type="password"]');
-  if (!passInput) {
-    console.log('Password input bulunamadi - belki zaten giris yapilmis?');
-    return;
-  }
-
-  // Username - password'den onceki input
-  const allInputs = await page.$$('input');
-  let userInput = null;
-  for (const inp of allInputs) {
-    const type = await inp.evaluate(el => el.type);
-    if (type !== 'password' && !userInput) {
-      userInput = inp;
-    }
-  }
-
+  // Username inputunu doldur
+  const userInput = await page.$('input[type="text"], input[type="email"], input:not([type="password"])');
   if (userInput) {
-    await page.evaluate((el, val) => { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }, 
-      await userInput.asElement ? userInput : userInput, USERNAME);
+    await userInput.click({ clickCount: 3 });
+    await userInput.type(USERNAME, { delay: 50 });
+    console.log('Username girildi');
   }
 
-  // Password doldur
-  await page.evaluate((el, val) => { 
-    el.value = val; 
-    el.dispatchEvent(new Event('input', {bubbles:true})); 
-  }, passInput, PASSWORD);
+  // Password inputunu doldur  
+  const passInput = await page.$('input[type="password"]');
+  if (passInput) {
+    await passInput.click({ clickCount: 3 });
+    await passInput.type(PASSWORD, { delay: 50 });
+    console.log('Password girildi');
+  }
 
   await sleep(500);
+  await page.screenshot({ path: '/root/wingo-oracle/s2-filled.png' });
 
-  // Submit
-  await clickButtonByText('Prijava');
-  console.log('Submit tiklandi');
-  await sleep(4000);
+  // Enter bas
+  await page.keyboard.press('Enter');
+  await sleep(5000);
 
-  const url = page.url();
-  console.log('Giris sonrasi URL:', url);
+  await page.screenshot({ path: '/root/wingo-oracle/s3-after-login.png' });
+  console.log('Login sonrasi URL:', page.url());
 
   // Wingo sayfasina git
   await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 30000 });
-  await sleep(3000);
+  await sleep(5000);
 
-  // Giris kontrol - kullanici adi gorunuyor mu?
-  const pageText = await page.evaluate(() => document.body.innerText);
-  if (pageText.includes('Adem') || pageText.includes('37.66') || pageText.includes('€')) {
-    console.log('GIRIS BASARILI!');
-  } else {
-    console.log('Giris durumu belirsiz, devam edilecek...');
-  }
+  await page.screenshot({ path: '/root/wingo-oracle/s4-wingo.png' });
 
-  await page.screenshot({ path: '/root/wingo-oracle/wingo-page.png' });
-
-  // Sayfa butonlarini goster
-  const btns = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t => t).slice(0, 20);
+  // Wingo sayfasindaki butonlar
+  const wingoBtns = await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('button')).map(b => ({
+      text: b.textContent.trim(),
+      class: b.className.substring(0,50)
+    })).filter(b=>b.text);
+    return btns.slice(0,40);
   });
-  console.log('Sayfadaki butonlar:', btns);
+  console.log('Wingo butonlari:', JSON.stringify(wingoBtns, null, 2));
+
+  isLoggedIn = true;
 }
 
 async function placeBet(numbers) {
   try {
     console.log(`Bahis: [${numbers}]`);
 
-    // Clear ticket
-    await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const clear = btns.find(b => b.textContent.toLowerCase().includes('clear') || b.textContent.toLowerCase().includes('obrisi'));
-      if (clear) clear.click();
+    // Wingo sayfasinda miyiz?
+    if (!page.url().includes('wingo')) {
+      await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 20000 });
+      await sleep(3000);
+    }
+
+    // Sayfalaki tum butonlari al
+    const allBtns = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('button, [role="button"]')).map(b => ({
+        text: b.textContent.trim(),
+        class: b.className
+      })).filter(b => b.text && /^\d+$/.test(b.text));
     });
-    await sleep(500);
+    
+    if (allBtns.length === 0) {
+      console.log('Sayi butonlari bulunamadi - screenshot aliniyor');
+      await page.screenshot({ path: '/root/wingo-oracle/no-btns.png' });
+      return false;
+    }
+
+    console.log(`${allBtns.length} sayi butonu bulundu`);
 
     // Sayilari sec
     for (const num of numbers) {
       const found = await page.evaluate((n) => {
-        const btns = Array.from(document.querySelectorAll('button'));
-        const btn = btns.find(b => b.textContent.trim() === String(n));
+        const all = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const btn = all.find(b => b.textContent.trim() === String(n));
         if (btn) { btn.click(); return true; }
-        // data-number veya data-value dene
-        const el = document.querySelector(`[data-number="${n}"], [data-value="${n}"]`);
-        if (el) { el.click(); return true; }
         return false;
       }, num);
-      if (found) await sleep(150);
-      else console.log(`Sayi bulunamadi: ${num}`);
+      if (found) { await sleep(200); console.log(`${num} secildi`); }
+      else console.log(`${num} bulunamadi`);
     }
 
-    await sleep(300);
+    await sleep(500);
 
     // Miktar gir
-    await page.evaluate((amount) => {
-      const inputs = Array.from(document.querySelectorAll('input[type="number"], input[type="text"]'));
-      for (const inp of inputs) {
-        if (inp.offsetParent !== null) { // visible
-          inp.value = amount;
-          inp.dispatchEvent(new Event('input', {bubbles:true}));
-          inp.dispatchEvent(new Event('change', {bubbles:true}));
-          break;
-        }
+    await page.evaluate((amt) => {
+      const inputs = Array.from(document.querySelectorAll('input'));
+      const visible = inputs.filter(i => i.offsetParent !== null && (i.type === 'number' || i.type === 'text'));
+      if (visible.length > 0) {
+        visible[0].value = amt;
+        visible[0].dispatchEvent(new Event('input', {bubbles:true}));
+        visible[0].dispatchEvent(new Event('change', {bubbles:true}));
       }
     }, BET_AMOUNT);
 
     await sleep(300);
 
-    // Bahis koy
-    const betPlaced = await page.evaluate(() => {
+    // Bahis koy butonu
+    const betOk = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('button'));
-      const betBtn = btns.find(b => {
-        const t = b.textContent.toLowerCase();
-        return t.includes('bet') || t.includes('ulog') || t.includes('uplati') || t.includes('stavi');
-      });
-      if (betBtn) { betBtn.click(); return true; }
-      return false;
+      const keywords = ['bet', 'ulog', 'uplati', 'stavi', 'place', 'potvrdi', 'confirm'];
+      const btn = btns.find(b => keywords.some(k => b.textContent.toLowerCase().includes(k)));
+      if (btn) { btn.click(); return btn.textContent.trim(); }
+      return null;
     });
 
-    if (betPlaced) {
-      console.log('Bahis konuldu!');
-      await sleep(1000);
+    if (betOk) {
+      console.log(`Bahis konuldu! (${betOk})`);
+      await sleep(2000);
       return true;
     }
 
-    // Screenshot al
-    await page.screenshot({ path: '/root/wingo-oracle/bet-screen.png' });
-    
-    // Tum butonlari listele
+    await page.screenshot({ path: '/root/wingo-oracle/bet-fail.png' });
     const btns = await page.evaluate(() => 
-      Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t=>t).slice(0,15)
+      Array.from(document.querySelectorAll('button')).map(b=>b.textContent.trim()).filter(t=>t).slice(0,20)
     );
     console.log('Mevcut butonlar:', btns);
     return false;
@@ -200,7 +191,7 @@ async function run() {
   await initBrowser();
   await login();
 
-  console.log('\nBot calisiyor - 20sn aralikla kontrol...');
+  console.log('\nBot calisiyor...');
 
   setInterval(async () => {
     try {
