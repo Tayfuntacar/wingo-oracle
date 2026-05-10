@@ -4,12 +4,16 @@ const { Client } = require('pg');
 const DB_URL = 'postgresql://wingo:wingo2026@localhost:5432/wingodb';
 const USERNAME = 'Adem1414';
 const PASSWORD = 'Adem0402';
-const BET_AMOUNT = 0.10; // 0.10 euro per bet
-const BET_ROUNDS = 3; // her tahmin için 3 tur oyna
+const BET_AMOUNT = 0.10;
+const BET_ROUNDS = 3;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 let db = new Client({ connectionString: DB_URL });
 let browser, page;
-let lastPlayedRound = -1;
+let currentRound = -1;
+let betsRemaining = 0;
+let currentNumbers = [];
 
 async function connectDB() {
   await db.connect();
@@ -18,7 +22,7 @@ async function connectDB() {
 
 async function getLatestPrediction() {
   const res = await db.query(`
-    SELECT round, pred_certain6, global_round
+    SELECT round, pred_certain6, global_round, created_at
     FROM predictions 
     WHERE pred_certain6 IS NOT NULL AND pred_certain6 != ''
     ORDER BY created_at DESC 
@@ -41,70 +45,33 @@ async function initBrowser() {
 async function login() {
   console.log('Giris yapiliyor...');
   await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 30000 });
-  await new Promise(r => setTimeout(r,(2000);
+  await sleep(3000);
 
-  // Login butonu
-  const loginBtn = await page.$('[class*="login"], [class*="Login"], button[class*="auth"]');
-  if (loginBtn) {
-    await loginBtn.click();
-    await new Promise(r => setTimeout(r,(1000);
+  // Screenshot al - ne gorunuyor?
+  await page.screenshot({ path: '/root/wingo-oracle/screen1.png' });
+  console.log('Ekran goruntusu alindi: screen1.png');
+
+  // Login butonunu bul
+  const content = await page.content();
+  if (content.includes('Log In') || content.includes('Login') || content.includes('Prijavi')) {
+    const loginBtn = await page.$('button[class*="login"], a[class*="login"], [class*="Login"]');
+    if (loginBtn) {
+      await loginBtn.click();
+      await sleep(2000);
+    }
   }
 
-  // Username ve password
-  await page.type('input[name="username"], input[type="text"]', USERNAME);
-  await page.type('input[name="password"], input[type="password"]', PASSWORD);
-  
-  // Submit
-  await page.keyboard.press('Enter');
-  await new Promise(r => setTimeout(r,(3000);
-  console.log('Giris tamamlandi');
-}
+  await page.screenshot({ path: '/root/wingo-oracle/screen2.png' });
+  console.log('Ekran 2 alindi');
 
-async function placeBet(numbers) {
-  try {
-    console.log(`Bahis aciliyor: ${numbers}`);
-    
-    // Wingo sayfasina git
-    await page.goto('https://www.volcanobet.me/wingo', { waitUntil: 'networkidle2', timeout: 20000 });
-    await new Promise(r => setTimeout(r,(2000);
+  // Input alanlari
+  const inputs = await page.$$('input');
+  console.log(`Input sayisi: ${inputs.length}`);
 
-    // Sayilari sec
-    for (const num of numbers) {
-      const selector = `[data-number="${num}"], button:has-text("${num}")`;
-      try {
-        await page.click(selector);
-        await new Promise(r => setTimeout(r,(200);
-      } catch(e) {
-        // XPath ile dene
-        const elements = await page.$x(`//button[text()="${num}"] | //*[@data-value="${num}"]`);
-        if (elements.length > 0) {
-          await elements[0].click();
-          await new Promise(r => setTimeout(r,(200);
-        }
-      }
-    }
-
-    // Miktar gir
-    const amountInput = await page.$('input[class*="amount"], input[placeholder*="amount"], input[type="number"]');
-    if (amountInput) {
-      await amountInput.click({ clickCount: 3 });
-      await amountInput.type(BET_AMOUNT.toString());
-    }
-
-    // Bahis koy
-    const betBtn = await page.$('button[class*="bet"], button[class*="Bet"], button[class*="place"]');
-    if (betBtn) {
-      await betBtn.click();
-      await new Promise(r => setTimeout(r,(1000);
-      console.log(`Bahis konuldu: ${numbers} - ${BET_AMOUNT}€`);
-      return true;
-    }
-    
-    console.log('Bahis butonu bulunamadi');
-    return false;
-  } catch(e) {
-    console.log('Bahis hatasi:', e.message);
-    return false;
+  for (let i = 0; i < inputs.length; i++) {
+    const type = await inputs[i].evaluate(el => el.type);
+    const name = await inputs[i].evaluate(el => el.name || el.placeholder || '');
+    console.log(`Input ${i}: type=${type} name=${name}`);
   }
 }
 
@@ -112,41 +79,7 @@ async function run() {
   await connectDB();
   await initBrowser();
   await login();
-
-  let betsRemaining = 0;
-  let currentNumbers = [];
-  let currentRound = -1;
-
-  console.log('Bot calisiyor - her tahmin icin 3 tur oynayacak...');
-
-  setInterval(async () => {
-    try {
-      const pred = await getLatestPrediction();
-      if (!pred || !pred.pred_certain6) return;
-
-      const numbers = pred.pred_certain6.split(',').map(Number);
-      const round = pred.global_round || pred.round;
-
-      // Yeni tahmin mi?
-      if (round !== currentRound) {
-        console.log(`Yeni tahmin - Round ${round}: ${numbers}`);
-        currentRound = round;
-        currentNumbers = numbers;
-        betsRemaining = BET_ROUNDS;
-      }
-
-      // Bahis koy
-      if (betsRemaining > 0) {
-        const success = await placeBet(currentNumbers);
-        if (success) {
-          betsRemaining--;
-          console.log(`Kalan bahis: ${betsRemaining}`);
-        }
-      }
-    } catch(e) {
-      console.log('Loop hatasi:', e.message);
-    }
-  }, 15000); // 15 saniyede bir kontrol et
+  console.log('Test tamamlandi - sayfayi inceliyorum');
 }
 
-run().catch(console.error);
+run().catch(e => { console.error('HATA:', e.message); process.exit(1); });
