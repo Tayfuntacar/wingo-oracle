@@ -1390,7 +1390,7 @@ function predict(draws) {
 
     // Son 10 çekilişte en çok/az çıkan sayılar - Volcanobet statistics ile aynı
     var last10Freq = {};
-    allNumsArr.slice(0, Math.min(10, n)).forEach(function(nums) {
+    allNumsArr.slice(0, Math.min(15, n)).forEach(function(nums) {
       nums.forEach(function(x){ last10Freq[x] = (last10Freq[x]||0) + 1; });
     });
     var last10Sorted = Object.keys(last10Freq).map(Number).sort(function(a,b){ return (last10Freq[b]||0)-(last10Freq[a]||0); });
