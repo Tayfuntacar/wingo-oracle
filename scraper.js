@@ -1388,16 +1388,16 @@ function predict(draws) {
     };
     (COLOR_BONUS[prevColor]||[]).forEach(function(n2, i){ scores[n2] += (6-i)*3; });
 
-    // Son 10 çekilişte en çok/az çıkan sayılar - Volcanobet statistics ile aynı
-    var last10Freq = {};
-    allNumsArr.slice(0, Math.min(15, n)).forEach(function(nums) {
-      nums.forEach(function(x){ last10Freq[x] = (last10Freq[x]||0) + 1; });
+    // Son 55 çekilişin İLK 20 sayısında frekans (backtest W=55 en iyi)
+    var first20Freq = {};
+    allNumsArr.slice(0, Math.min(55, n)).forEach(function(nums) {
+      nums.slice(0, 20).forEach(function(x){ first20Freq[x] = (first20Freq[x]||0) + 1; });
     });
-    var last10Sorted = Object.keys(last10Freq).map(Number).sort(function(a,b){ return (last10Freq[b]||0)-(last10Freq[a]||0); });
-    // Most drawn bonus
-    last10Sorted.slice(0,5).forEach(function(n2){ scores[n2] += 12; });
-    // Least drawn - soğuk sayılar güçlü bonus
-    last10Sorted.slice(-5).forEach(function(n2){ scores[n2] += 15; });
+    var first20Sorted = Object.keys(first20Freq).map(Number).sort(function(a,b){ return (first20Freq[a]||0)-(first20Freq[b]||0); });
+    // En az çıkan (soğuk) - güçlü bonus
+    first20Sorted.slice(0,10).forEach(function(n2, i){ scores[n2] += (10-i)*3; });
+    // En çok çıkan - bonus
+    first20Sorted.slice(-5).forEach(function(n2, i){ scores[n2] += (i+1)*2; });
 
     // Son 3 turda çıkan sayılara ceza (tekrar azaltma)
     var recentAll = {};
