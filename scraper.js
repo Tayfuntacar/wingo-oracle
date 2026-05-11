@@ -215,13 +215,14 @@ function connect() {
                   var a = j.arguments[0];
 
                   var wsRound = parseInt(a.number);
-                  // Aynı global round'u tekrar işleme (hafta değişince aynı round no olabilir)
-                  var wsGlobal = (currentWeekNumber * 10000) + wsRound;
-                  // Yeni hafta tespiti: round büyük düşüş yaşadıysa hafta değişmiştir
+                  // Yeni hafta tespiti
                   if (lastSeenRound > 0 && wsRound < lastSeenRound - 100) {
-                    wsGlobal = ((currentWeekNumber + 1) * 10000) + wsRound;
+                    currentWeekNumber++;
+                    console.log('YENİ HAFTA! Week:' + currentWeekNumber + ' ' + lastSeenRound + '->' + wsRound);
                   }
-                  if (wsRound === lastProcessedWsRound && wsGlobal <= (currentWeekNumber * 10000 + lastSeenRound)) return;
+                  var wsGlobal = (currentWeekNumber * 10000) + wsRound;
+                  // Ayni round'u tekrar isleme
+                  if (wsRound === lastProcessedWsRound) return;
                   lastProcessedWsRound = wsRound;
                   var first = parseInt(a.ballNumbers[0]);
                   var first5 = a.ballNumbers.slice(0, 6).map(Number);
