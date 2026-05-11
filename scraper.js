@@ -33,9 +33,9 @@ process.on('unhandledRejection', function(e) { console.log('PROMISE HATASI:', e 
 
 db.connect().then(function() {
   console.log('DB baglandi!');
-  return dbQuery('CREATE TABLE IF NOT EXISTS draws (id SERIAL PRIMARY KEY, round INT UNIQUE, first INT, over_under VARCHAR(5), color VARCHAR(20), all_numbers TEXT, created_at TIMESTAMP DEFAULT NOW())');
+  return dbQuery('CREATE TABLE IF NOT EXISTS draws (id SERIAL PRIMARY KEY, round INT, first INT, over_under VARCHAR(5), color VARCHAR(20), all_numbers TEXT, created_at TIMESTAMP DEFAULT NOW())');
 }).then(function() {
-  return dbQuery('CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, round INT UNIQUE, pred_ou VARCHAR(5), pred_color VARCHAR(20), pred_first TEXT, pred_first5 TEXT, pred_certain8 TEXT, pred_certain6 TEXT, actual_first INT, actual_first5 TEXT, actual_color VARCHAR(20), actual_ou VARCHAR(5), ou_hit SMALLINT DEFAULT -1, color_hit SMALLINT DEFAULT -1, first_hit SMALLINT DEFAULT -1, first5_hit SMALLINT DEFAULT -1, certain8_hit SMALLINT DEFAULT -1, first5_match INT DEFAULT -1, certain8_match INT DEFAULT -1, certain8_full_match INT DEFAULT -1, certain6_match INT DEFAULT -1, created_at TIMESTAMP DEFAULT NOW())');
+  return dbQuery('CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, round INT, pred_ou VARCHAR(5), pred_color VARCHAR(20), pred_first TEXT, pred_first5 TEXT, pred_certain8 TEXT, pred_certain6 TEXT, actual_first INT, actual_first5 TEXT, actual_color VARCHAR(20), actual_ou VARCHAR(5), ou_hit SMALLINT DEFAULT -1, color_hit SMALLINT DEFAULT -1, first_hit SMALLINT DEFAULT -1, first5_hit SMALLINT DEFAULT -1, certain8_hit SMALLINT DEFAULT -1, first5_match INT DEFAULT -1, certain8_match INT DEFAULT -1, certain8_full_match INT DEFAULT -1, certain6_match INT DEFAULT -1, created_at TIMESTAMP DEFAULT NOW())');
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS actual_first5 TEXT');
 }).then(function() {
