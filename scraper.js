@@ -126,8 +126,11 @@ function loadCacheFromDB() {
   .then(function(wRes) {
     if (wRes.rows.length > 0 && wRes.rows[0].week_number !== null) {
       currentWeekNumber = parseInt(wRes.rows[0].week_number) || 0;
-      lastSeenRound = parseInt(wRes.rows[0].round) || -1;
-      console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound);
+      // lastSeenRound sadece mevcut haftanın round'unu takip etmeli
+      // Eğer DB'deki son round 1000'den büyükse (eski veri), -1 olarak başlat
+      var dbRound = parseInt(wRes.rows[0].round) || -1;
+      lastSeenRound = dbRound <= 400 ? dbRound : -1;
+      console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound + ' (dbRound=' + dbRound + ')');
     }
     return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200");
   })
