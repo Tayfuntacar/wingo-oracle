@@ -1844,9 +1844,7 @@ function startDashboard() {
 
       // Kesin 7 dagilim
       h += '<div class="ar"><div class="sl">Kesin 7 \u2192 35 sayida kac tuttu (ort.) \u2014 Rastgele</div>';
-      h += '<div style="font-size:16px;font-weight:900;color:#d4a843">'+c7avg+' / 7</div></div>';
       h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 7 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
-      for (var _j=0;_j<=7;_j++){var _cj=_j>=6?'#22c55e':_j>=5?'#facc15':'#d4a843';var _bj=_j>=6?'#22c55e44':_j>=5?'#facc1544':'#2a2f42';h+='<div style="background:#1e2130;border:1px solid '+_bj+';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">'+_j+'/7: </span><span style="color:'+_cj+';font-weight:800">'+(c7Dist[_j]||0)+'x</span></div>';}
       h += '</div></div>';
 
       // Kesin 8 özet + dağılım
