@@ -333,7 +333,7 @@ function saveNextPrediction(round, globalRound, weekNum, callback) {
     var nextGlobalRound = globalRound + 1;
     console.log('--- TAHMIN: Round ' + nextRound + ' (global:' + nextGlobalRound + ') -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     dbQuery(
-      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot,pred_certain6b,pred_certain6c) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING',
+      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot,pred_certain6b,pred_certain6c,pred_certain6d,pred_certain6e) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT DO NOTHING',
       [nextRound, weekNum, nextGlobalRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
@@ -344,7 +344,9 @@ function saveNextPrediction(round, globalRound, weekNum, callback) {
        pred.certain7          ? pred.certain7.join(',')          : '',
        pred.jackpot           ? pred.jackpot.join(',')           : '',
        pred.certain6b         ? pred.certain6b.join(',')         : '',
-       pred.certain6c         ? pred.certain6c.join(',')         : '']
+       pred.certain6c         ? pred.certain6c.join(',')         : '',
+       pred.certain6d         ? pred.certain6d.join(',')         : '',
+       pred.certain6e         ? pred.certain6e.join(',')         : '']
     ).then(function() { console.log('Tahmin kaydedildi: Round ' + nextRound + ' (global:' + nextGlobalRound + ')'); if (callback) callback(); })
      .catch(function(e) { console.log('SavePred hatasi:', e.message); if (callback) callback(); });
   }).catch(function(e) { console.log('SaveNextPred hatasi:', e.message); });
@@ -1738,23 +1740,19 @@ function startDashboard() {
     dbQuery("SELECT DISTINCT ON (p.id) p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.global_round=d.global_round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.id DESC, p.created_at DESC LIMIT 1000").then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
-      var c6T = 0, c6S = 0, c8FT = 0, c8FS = 0;
       var c6Dist = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
-      var c8fDist = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0};
 
       rows.forEach(function(r) {
         ouTotal++;    if (parseInt(r.ou_hit) === 1) ouHit++;
         colorTotal++; if (parseInt(r.color_hit) === 1) colorHit++;
         firstTotal++; if (parseInt(r.first_hit) === 1) firstHit++;
         var c6m = parseInt(r.certain6_match); if (c6m >= 0) { c6T++; c6S += c6m; c6Dist[Math.min(c6m,6)] = (c6Dist[Math.min(c6m,6)] || 0) + 1; }
-        var cfm = parseInt(r.certain8_full_match); if (cfm >= 0) { c8FT++; c8FS += cfm; c8fDist[Math.min(cfm,8)] = (c8fDist[Math.min(cfm,8)] || 0) + 1; }
       });
 
       var ouPct    = ouTotal    > 0 ? Math.round(ouHit    / ouTotal    * 100) : 0;
       var colorPct = colorTotal > 0 ? Math.round(colorHit / colorTotal * 100) : 0;
       var firstPct = firstTotal > 0 ? Math.round(firstHit / firstTotal * 100) : 0;
       var c6avg    = c6T  > 0 ? (c6S  / c6T).toFixed(2)  : '0.00';
-      var c8favg   = c8FT > 0 ? (c8FS / c8FT).toFixed(2) : '0.00';
 
       var h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapor</title>';
       h += '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1d2e;color:#fff;font-family:Arial,sans-serif;padding:12px;max-width:580px;margin:0 auto}';
@@ -1843,18 +1841,13 @@ function startDashboard() {
       h += '</div></div>';
 
       // Kesin 7 dagilim
-      h += '<div class="ar"><div class="sl">Kesin 7 \u2192 35 sayida kac tuttu (ort.) \u2014 Rastgele</div>';
-      h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 7 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
       h += '</div></div>';
 
       // Kesin 8 özet + dağılım
-      h += '<div class="ar"><div class="sl">Kesin 8 \u2192 35 sayida kac tuttu (ort.)</div>';
       h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c8favg + ' / 8</div></div>';
-      h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 8 DAGILIMI (35 SAYI) \u2014 6+ PARA ODUYOR</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
       for (var _k = 0; _k <= 8; _k++) {
         var _e   = _k >= 6 ? '#22c55e' : _k >= 5 ? '#facc15' : '#ef4444';
         var _brd = _k >= 6 ? '#22c55e44' : _k >= 5 ? '#facc1544' : '#2a2f42';
-        h += '<div style="background:#1e2130;border:1px solid ' + _brd + ';border-radius:8px;padding:4px 8px;font-size:12px"><span style="color:#aab0c4">' + _k + '/8: </span><span style="color:' + _e + ';font-weight:800">' + (c8fDist[_k] || 0) + 'x</span></div>';
       }
       h += '</div></div>';
 
