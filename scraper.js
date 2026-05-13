@@ -1794,23 +1794,20 @@ function startDashboard() {
       h += '<div class="sr"><div class="sl">Kesin 6 (6/6 tuttu)</div><div class="srr">';
       h += '<div class="sp" style="color:' + c6pc + '">%' + c6ppct + '</div><div class="ss">' + c6perfect + '/' + c6T + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
-      // Kesin 7 (7/7 tuttu) - Rastgele
-      var c7T = 0, c7S = 0, c7Dist = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0};
-      rows.forEach(function(rr){ var c7m=parseInt(rr.certain7_match); if(!isNaN(c7m)&&c7m>=0){c7T++;c7S+=c7m;c7Dist[Math.min(c7m,7)]=(c7Dist[Math.min(c7m,7)]||0)+1;} });
-      var c7avg = c7T>0?(c7S/c7T).toFixed(2):'0.00';
-      var c7perfect = c7Dist[7]||0;
-      var c7ppct = c7T>0?Math.round(c7perfect/c7T*100):0;
-      h += '<div class="sr"><div class="sl">Kesin 7 (7/7 tuttu) — Rastgele</div><div class="srr">';
-      h += '<div class="sp" style="color:#d4a843">%'+c7ppct+'</div><div class="ss">'+c7perfect+'/'+c7T+' tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c7ppct*4,100)+'%;background:#d4a843"></div></div></div></div>';
-
-      // Kesin 8 (8/8 tuttu)
-      var c8perfect = c8fDist[8] || 0;
-      var c8ppct = c8FT > 0 ? Math.round(c8perfect / c8FT * 100) : 0;
-      var c8ppc = c8ppct >= 10 ? '#22c55e' : c8ppct >= 5 ? '#facc15' : '#ef4444';
-      h += '<div class="sr"><div class="sl">Kesin 8 (8/8 tuttu)</div><div class="srr">';
-      h += '<div class="sp" style="color:' + c8ppc + '">%' + c8ppct + '</div><div class="ss">' + c8perfect + '/' + c8FT + ' tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:' + Math.min(c8ppct * 4, 100) + '%;background:' + c8ppc + '"></div></div></div></div>';
+      // Kesin 6-B (13 havuzdan)
+      var c6bT=0,c6bS=0,c6bPerf=0;
+      rows.forEach(function(rr){ var m=parseInt(rr.certain6b_match); if(!isNaN(m)&&m>=0){c6bT++;c6bS+=m;if(m===6)c6bPerf++;} });
+      var c6bPct=c6bT>0?Math.round(c6bPerf/c6bT*100):0;
+      h += '<div class="sr"><div class="sl">Kesin 6-B (6/6 tuttu)</div><div class="srr">';
+      h += '<div class="sp" style="color:#f97316">%'+c6bPct+'</div><div class="ss">'+c6bPerf+'/'+c6bT+' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6bPct*4,100)+'%;background:#f97316"></div></div></div></div>';
+      // Kesin 6-C (13 havuzdan)
+      var c6cT=0,c6cS=0,c6cPerf=0;
+      rows.forEach(function(rr){ var m=parseInt(rr.certain6c_match); if(!isNaN(m)&&m>=0){c6cT++;c6cS+=m;if(m===6)c6cPerf++;} });
+      var c6cPct=c6cT>0?Math.round(c6cPerf/c6cT*100):0;
+      h += '<div class="sr"><div class="sl">Kesin 6-C (6/6 tuttu)</div><div class="srr">';
+      h += '<div class="sp" style="color:#a78bfa">%'+c6cPct+'</div><div class="ss">'+c6cPerf+'/'+c6cT+' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6cPct*4,100)+'%;background:#a78bfa"></div></div></div></div>';
       h += '<div class="ar"><div class="sl">Kesin 6 \u2192 35 sayida kac tuttu (ort.)</div>';
       h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c6avg + ' / 6</div></div>';
       h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 6 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
