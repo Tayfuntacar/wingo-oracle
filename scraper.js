@@ -49,9 +49,9 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain6_match INT DEFAULT -1');
 }).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_certain6b TEXT DEFAULT ''');
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_certain6b TEXT');
 }).then(function() {
-  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_certain6c TEXT DEFAULT ''');
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_certain6c TEXT');
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain6b_match INT DEFAULT -1');
 }).then(function() {
