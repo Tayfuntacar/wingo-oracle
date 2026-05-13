@@ -57,6 +57,12 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain6c_match INT DEFAULT -1');
 }).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain6d_match INT DEFAULT -1');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain6e_match INT DEFAULT -1');
+}).then(function() {
+  return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS outsiders_13 TEXT');
+}).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS pred_certain7 TEXT');
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS certain7_match INT DEFAULT -1');
@@ -294,6 +300,10 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
       var c7Match     = pc7.length > 0 ? allNums.filter(function(n) { return pc7.indexOf(n) !== -1; }).length : -1;
       var pc6b        = row.pred_certain6b ? row.pred_certain6b.split(',').map(Number) : [];
       var c6bMatch    = pc6b.length > 0 ? allNums.filter(function(n) { return pc6b.indexOf(n) !== -1; }).length : -1;
+      var pc6d        = row.pred_certain6d ? row.pred_certain6d.split(',').map(Number) : [];
+      var c6dMatch    = pc6d.length > 0 ? allNums.filter(function(n) { return pc6d.indexOf(n) !== -1; }).length : -1;
+      var pc6e        = row.pred_certain6e ? row.pred_certain6e.split(',').map(Number) : [];
+      var c6eMatch    = pc6e.length > 0 ? allNums.filter(function(n) { return pc6e.indexOf(n) !== -1; }).length : -1;
       var pc6c        = row.pred_certain6c ? row.pred_certain6c.split(',').map(Number) : [];
       var c6cMatch    = pc6c.length > 0 ? allNums.filter(function(n) { return pc6c.indexOf(n) !== -1; }).length : -1;
       // Jackpot: 15-19-23-27-35. pozisyonlardaki gerçek sayılar
@@ -301,8 +311,8 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
       var pJp = row.pred_jackpot ? row.pred_jackpot.split(',').map(Number) : [];
       var jpMatch = pJp.length > 0 ? actualJpNums.filter(function(n) { return pJp.indexOf(n) !== -1; }).length : -1;
       dbQuery(
-        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14,actual_jackpot=$15,jackpot_match=$16,certain6b_match=$17,certain6c_match=$18 WHERE id=$19',
-        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, actualJpNums.join(','), jpMatch, c6bMatch, c6cMatch, row.id]
+        'UPDATE predictions SET actual_first=$1,actual_first5=$2,actual_color=$3,actual_ou=$4,ou_hit=$5,color_hit=$6,first_hit=$7,first5_hit=$8,certain8_hit=$9,first5_match=$10,certain8_match=$11,certain8_full_match=$12,certain6_match=$13,certain7_match=$14,actual_jackpot=$15,jackpot_match=$16,certain6b_match=$17,certain6c_match=$18,certain6d_match=$19,certain6e_match=$20 WHERE id=$21',
+        [first, first5.join(','), renk, ou, ouHit, colorHit, firstHit, f5Hit, c8Hit, f5Match, c8Match, c8FullMatch, c6Match, c7Match, actualJpNums.join(','), jpMatch, c6bMatch, c6cMatch, c6dMatch, c6eMatch, row.id]
       ).then(function() {
         console.log('>>> Round ' + round + ' | OU:' + (ouHit?'TUTTU':'KACTI') + ' | Renk:' + (colorHit?'TUTTU':'KACTI') + ' | C6A:' + c6Match + '/6 | C6B:' + c6bMatch + '/6 | C6C:' + c6cMatch + '/6');
       }).catch(function(e) { console.log('Update hatasi:', e.message); });
@@ -1688,7 +1698,7 @@ function startDashboard() {
   });
 
   app.get('/predictions.json', function(req, res) {
-    dbQuery("SELECT round, pred_ou, pred_color, pred_first, pred_first5, pred_certain6, pred_certain8, actual_first, actual_first5, actual_color, actual_ou, ou_hit, color_hit, first_hit, first5_match, certain6_match, certain8_full_match, certain6b_match, certain6c_match, created_at FROM predictions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at ASC")
+    dbQuery("SELECT round, pred_ou, pred_color, pred_first, pred_first5, pred_certain6, pred_certain8, actual_first, actual_first5, actual_color, actual_ou, ou_hit, color_hit, first_hit, first5_match, certain6_match, certain8_full_match, certain6b_match, certain6c_match, certain6d_match, certain6e_match, outsiders_13, created_at FROM predictions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at ASC")
     .then(function(result) {
       var data = result.rows.map(function(r, i) {
         return {
@@ -1791,7 +1801,7 @@ function startDashboard() {
       var c6perfect = c6Dist[6] || 0;
       var c6ppct = c6T > 0 ? Math.round(c6perfect / c6T * 100) : 0;
       var c6pc = c6ppct >= 20 ? '#22c55e' : c6ppct >= 5 ? '#facc15' : '#ef4444';
-      h += '<div class="sr"><div class="sl">Kesin 6 (6/6 tuttu)</div><div class="srr">';
+      h += '<div class="sr"><div class="sl">Kesin 6-A (6/6 tuttu)</div><div class="srr">';
       h += '<div class="sp" style="color:' + c6pc + '">%' + c6ppct + '</div><div class="ss">' + c6perfect + '/' + c6T + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
       // Kesin 6-B (13 havuzdan)
@@ -1808,7 +1818,21 @@ function startDashboard() {
       h += '<div class="sr"><div class="sl">Kesin 6-C (6/6 tuttu)</div><div class="srr">';
       h += '<div class="sp" style="color:#a78bfa">%'+c6cPct+'</div><div class="ss">'+c6cPerf+'/'+c6cT+' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6cPct*4,100)+'%;background:#a78bfa"></div></div></div></div>';
-      h += '<div class="ar"><div class="sl">Kesin 6 \u2192 35 sayida kac tuttu (ort.)</div>';
+      // Kesin 6-D
+      var c6dT=0,c6dPerf=0;
+      rows.forEach(function(rr){ var m=parseInt(rr.certain6d_match); if(!isNaN(m)&&m>=0){c6dT++;if(m===6)c6dPerf++;} });
+      var c6dPct=c6dT>0?Math.round(c6dPerf/c6dT*100):0;
+      h += '<div class="sr"><div class="sl">Kesin 6-D (6/6 tuttu)</div><div class="srr">';
+      h += '<div class="sp" style="color:#34d399">%'+c6dPct+'</div><div class="ss">'+c6dPerf+'/'+c6dT+' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6dPct*4,100)+'%;background:#34d399"></div></div></div></div>';
+      // Kesin 6-E
+      var c6eT=0,c6ePerf=0;
+      rows.forEach(function(rr){ var m=parseInt(rr.certain6e_match); if(!isNaN(m)&&m>=0){c6eT++;if(m===6)c6ePerf++;} });
+      var c6ePct=c6eT>0?Math.round(c6ePerf/c6eT*100):0;
+      h += '<div class="sr"><div class="sl">Kesin 6-E (6/6 tuttu)</div><div class="srr">';
+      h += '<div class="sp" style="color:#f472b6">%'+c6ePct+'</div><div class="ss">'+c6ePerf+'/'+c6eT+' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6ePct*4,100)+'%;background:#f472b6"></div></div></div></div>';
+      h += '<div class="ar"><div class="sl">Kesin 6-A \u2192 35 sayida kac tuttu (ort.)</div>';
       h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c6avg + ' / 6</div></div>';
       h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 6 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
       for (var _i = 0; _i <= 6; _i++) {
