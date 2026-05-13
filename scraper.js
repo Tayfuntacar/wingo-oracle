@@ -1688,7 +1688,7 @@ function startDashboard() {
   });
 
   app.get('/predictions.json', function(req, res) {
-    dbQuery("SELECT round, pred_ou, pred_color, pred_first, pred_first5, pred_certain6, pred_certain8, actual_first, actual_first5, actual_color, actual_ou, ou_hit, color_hit, first_hit, first5_match, certain6_match, certain8_full_match, created_at FROM predictions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at ASC")
+    dbQuery("SELECT round, pred_ou, pred_color, pred_first, pred_first5, pred_certain6, pred_certain8, actual_first, actual_first5, actual_color, actual_ou, ou_hit, color_hit, first_hit, first5_match, certain6_match, certain8_full_match, certain6b_match, certain6c_match, created_at FROM predictions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at ASC")
     .then(function(result) {
       var data = result.rows.map(function(r, i) {
         return {
