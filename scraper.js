@@ -1908,6 +1908,21 @@ function startDashboard() {
         var pc7  = r.pred_certain7 ? r.pred_certain7.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
         var pc8  = r.pred_certain8 ? r.pred_certain8.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
 
+        // ── ÇARPAN TABLOSU (pozisyon 0-34 → çarpan) ──
+        var CARPAN = [10000,7500,5000,2500,1000,500,300,200,150,100,90,80,70,60,50,40,30,25,20,15,10,9,8,7,6,5,4,3,3,2,2,2,1,1,1];
+        function getCarpan(predArr, allNums) {
+          // predArr ile eşleşen sayıların allNums'daki pozisyonlarını bul
+          // 6/6 ise son eşleşen sayının pozisyonuna göre çarpan ver
+          var positions = [];
+          allNums.forEach(function(n, idx) {
+            if (predArr.indexOf(n) !== -1) positions.push(idx);
+          });
+          if (positions.length < predArr.length) return null; // tam 6/6 değil
+          var lastPos = positions[positions.length - 1];
+          var carpan = lastPos < CARPAN.length ? CARPAN[lastPos] : 1;
+          return { pos: lastPos + 1, carpan: carpan };
+        }
+
         var c6m  = parseInt(r.certain6_match)      >= 0 ? parseInt(r.certain6_match)      : '-';
         var c7m  = r.certain7_match !== null && parseInt(r.certain7_match) >= 0 ? parseInt(r.certain7_match) : '-';
         var c8fm = parseInt(r.certain8_full_match)  >= 0 ? parseInt(r.certain8_full_match)  : '-';
@@ -1976,7 +1991,9 @@ function startDashboard() {
 
         // ── KESIN 6-A (mavi - ana sayfayla aynı) ──
         if (pc6.length > 0 || c6m !== '-') {
-          h += '<div class="lbl">KESIN 6 - A \u2014 <span style="color:#38bdf8;font-weight:900">' + c6m + '/6 tuttu (35 sayida)</span></div>';
+          var _carpA = (c6m === 6 && aAll.length > 0) ? getCarpan(pc6, aAll) : null;
+          var _carpAstr = _carpA ? ' <span style="color:#facc15;font-size:11px;font-weight:900;background:#2a2000;padding:2px 7px;border-radius:10px;border:1px solid #facc1566">(' + _carpA.carpan.toLocaleString() + 'X)</span>' : '';
+          h += '<div class="lbl">KESIN 6 - A \u2014 <span style="color:#38bdf8;font-weight:900">' + c6m + '/6 tuttu (35 sayida)</span>' + _carpAstr + '</div>';
           h += '<div class="nr">';
           pc6.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
@@ -1999,7 +2016,9 @@ function startDashboard() {
         var c6bm2raw = parseInt(r.certain6b_match);
         var c6bm2 = c6bm2raw >= 0 ? c6bm2raw : (aAll.length > 0 && pc6b2.length > 0 ? aAll.filter(function(n){ return pc6b2.indexOf(n) !== -1; }).length : '-');
         if (pc6b2.length > 0) {
-          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - B \u2014 <span style="color:#f97316;font-weight:900">' + c6bm2 + '/6 tuttu (35 sayida)</span></div>';
+          var _carpB = (c6bm2 === 6 && aAll.length > 0) ? getCarpan(pc6b2, aAll) : null;
+          var _carpBstr = _carpB ? ' <span style="color:#facc15;font-size:11px;font-weight:900;background:#2a2000;padding:2px 7px;border-radius:10px;border:1px solid #facc1566">(' + _carpB.carpan.toLocaleString() + 'X)</span>' : '';
+          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - B \u2014 <span style="color:#f97316;font-weight:900">' + c6bm2 + '/6 tuttu (35 sayida)</span>' + _carpBstr + '</div>';
           h += '<div class="nr">';
           pc6b2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
@@ -2022,7 +2041,9 @@ function startDashboard() {
         var c6cm2raw = parseInt(r.certain6c_match);
         var c6cm2 = c6cm2raw >= 0 ? c6cm2raw : (aAll.length > 0 && pc6c2.length > 0 ? aAll.filter(function(n){ return pc6c2.indexOf(n) !== -1; }).length : '-');
         if (pc6c2.length > 0) {
-          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - C \u2014 <span style="color:#a78bfa;font-weight:900">' + c6cm2 + '/6 tuttu (35 sayida)</span></div>';
+          var _carpC = (c6cm2 === 6 && aAll.length > 0) ? getCarpan(pc6c2, aAll) : null;
+          var _carpCstr = _carpC ? ' <span style="color:#facc15;font-size:11px;font-weight:900;background:#2a2000;padding:2px 7px;border-radius:10px;border:1px solid #facc1566">(' + _carpC.carpan.toLocaleString() + 'X)</span>' : '';
+          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - C \u2014 <span style="color:#a78bfa;font-weight:900">' + c6cm2 + '/6 tuttu (35 sayida)</span>' + _carpCstr + '</div>';
           h += '<div class="nr">';
           pc6c2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
@@ -2045,7 +2066,9 @@ function startDashboard() {
         var c6dm2raw = parseInt(r.certain6d_match);
         var c6dm2 = c6dm2raw >= 0 ? c6dm2raw : (aAll.length > 0 && pc6d2.length > 0 ? aAll.filter(function(n){ return pc6d2.indexOf(n) !== -1; }).length : '-');
         if (pc6d2.length > 0) {
-          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - D \u2014 <span style="color:#34d399;font-weight:900">' + c6dm2 + '/6 tuttu (35 sayida)</span></div>';
+          var _carpD = (c6dm2 === 6 && aAll.length > 0) ? getCarpan(pc6d2, aAll) : null;
+          var _carpDstr = _carpD ? ' <span style="color:#facc15;font-size:11px;font-weight:900;background:#2a2000;padding:2px 7px;border-radius:10px;border:1px solid #facc1566">(' + _carpD.carpan.toLocaleString() + 'X)</span>' : '';
+          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - D \u2014 <span style="color:#34d399;font-weight:900">' + c6dm2 + '/6 tuttu (35 sayida)</span>' + _carpDstr + '</div>';
           h += '<div class="nr">';
           pc6d2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
@@ -2068,7 +2091,9 @@ function startDashboard() {
         var c6em2raw = parseInt(r.certain6e_match);
         var c6em2 = c6em2raw >= 0 ? c6em2raw : (aAll.length > 0 && pc6e2.length > 0 ? aAll.filter(function(n){ return pc6e2.indexOf(n) !== -1; }).length : '-');
         if (pc6e2.length > 0) {
-          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - E \u2014 <span style="color:#f472b6;font-weight:900">' + c6em2 + '/6 tuttu (35 sayida)</span></div>';
+          var _carpE = (c6em2 === 6 && aAll.length > 0) ? getCarpan(pc6e2, aAll) : null;
+          var _carpEstr = _carpE ? ' <span style="color:#facc15;font-size:11px;font-weight:900;background:#2a2000;padding:2px 7px;border-radius:10px;border:1px solid #facc1566">(' + _carpE.carpan.toLocaleString() + 'X)</span>' : '';
+          h += '<div class="lbl" style="margin-top:8px">KESIN 6 - E \u2014 <span style="color:#f472b6;font-weight:900">' + c6em2 + '/6 tuttu (35 sayida)</span>' + _carpEstr + '</div>';
           h += '<div class="nr">';
           pc6e2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
