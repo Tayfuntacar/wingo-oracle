@@ -1494,58 +1494,80 @@ function predict(draws) {
     for (var x=1; x<=48; x++) {
       if (!prevSet[x]) outsiders.push(x);
     }
-    // 13 sayı olmalı
     if (outsiders.length !== 13) return;
 
-    // ISIRAR SKORU: bazı sayılar dışarıda kalmayı seviyor (tekrar dışarıda kalma olasılığı yüksek)
-    var PERSIST_SCORE = {
-      20:30, 7:30, 9:29, 28:29, 31:28,  // ısrarcı - büyük ihtimalle yine dışarıda kalır
-      1:27, 3:26, 10:26, 21:25, 26:25,  // orta ısrarcı
-      41:5, 39:5, 2:5, 37:5, 32:5,      // hızlı döner - geri gelme ihtimali yüksek
-      40:6, 6:6, 43:6, 46:7, 47:7       // hızlı döner
-    };
+    // ── YENİ MOTORun ÖNKOŞULu: Frekans ve Pozisyon Skorları ──
+    // 8791 çekiliş analizi:
+    //   A → Wingo 10tur frekans (en çok çıkan 6) : %12.31 6/6
+    //   B → 3 havuz13 yüksek frekans + 3 tüm48 yüksek pozisyon: %12.59
+    //   C → 3 havuz13 düşük streak + 3 havuz13 yüksek frekans : %12.73
+    //   D → havuz13 frekans 10tur (mevcut - en iyi >= 10X %4.1): AYNI KALIR
+    //   E → havuz13 frekans 15tur                               : AYNI KALIR
 
-    // KO-OCCURRENCE: bazı sayılar birlikte dışarıda kalıyor
-    var KO_PAIRS = [[40,48],[1,26],[7,20],[9,28],[31,41]];
+    // Son 10 ve 15 tur frekans + pozisyon skoru (draws DESC sırada, [0]=en son)
+    var freq10 = {}; var freq15 = {}; var posScore15 = {};
+    for (var pi = 1; pi <= 48; pi++) { freq10[pi]=0; freq15[pi]=0; posScore15[pi]=0; }
 
-    // Her dışarıdaki sayı için "geri dönme skoru" hesapla (yüksek = geri döner)
-    var returnScores = {};
-    outsiders.forEach(function(x) {
-      var score = 100;
-      // Israr skoru varsa düş (ısrarcı sayılar geri gelmez)
-      score -= (PERSIST_SCORE[x] || 15);
-      // First renk bonusu: bu sayı mevcut rengin sayısıysa geri gelir
-      var COLOR_NUMS_B = {
-        'Sari':[1,9,17,25,33,41],'Yesil':[2,10,18,26,34,42],'Mavi':[3,11,19,27,35,43],
-        'Kirmizi':[4,12,20,28,36,44],'Kahve':[5,13,21,29,37,45],'Turuncu':[6,14,22,30,38,46],
-        'Siyah':[7,15,23,31,39,47],'Mor':[8,16,24,32,40,48]
-      };
-      if (predColor && COLOR_NUMS_B[predColor] && COLOR_NUMS_B[predColor].indexOf(x) !== -1) {
-        score += 20; // kendi rengi geri döner
+    var useLen = Math.min(draws.length, 15);
+    for (var di = 0; di < useLen; di++) {
+      var dNums = allNumsArr[di];
+      for (var pi2 = 0; pi2 < dNums.length; pi2++) {
+        var num = dNums[pi2];
+        if (num < 1 || num > 48) continue;
+        freq15[num]++;
+        posScore15[num] += (35 - pi2); // pozisyon 0 = 35 puan, son pozisyon = 0
+        if (di < 10) freq10[num]++;
       }
-      // Ko-occurrence: partner içerideyse bu da geri döner
-      KO_PAIRS.forEach(function(pair) {
-        if (pair[0] === x && prevSet[pair[1]]) score += 10;
-        if (pair[1] === x && prevSet[pair[0]]) score += 10;
-      });
-      returnScores[x] = score;
+    }
+
+    // Streak hesapla: her outsider için kaç turdur dışarıda?
+    var streakMap = {};
+    outsiders.forEach(function(num) {
+      var s = 0;
+      for (var si = 0; si < Math.min(draws.length, 10); si++) {
+        if (allNumsArr[si].indexOf(num) === -1) { s++; } else { break; }
+      }
+      streakMap[num] = s;
     });
 
-    // Return score'a göre sırala (yüksek = geri döner)
-    var sortedOutsiders = outsiders.slice().sort(function(a,b){ return returnScores[b]-returnScores[a]; });
+    // ── C6-A: Wingo İstatistik Bazlı (son 10 turda en yüksek frekans, tüm 48'den) ──
+    // Wingo'nun kendi gösterdiği istatistikle uyumlu, %12.31 başarı
+    var allNums48 = [];
+    for (var ai = 1; ai <= 48; ai++) allNums48.push(ai);
+    var sortedByFreq10 = allNums48.slice().sort(function(a,b){ return freq10[b]-freq10[a]; });
+    result.certain6 = sortedByFreq10.slice(0,6).sort(function(a,b){return a-b;});
 
-    // İlk 10: geri dönme ihtimali yüksek sayılar
-    var pool10 = sortedOutsiders.slice(0, 10);
+    // ── C6-B: 3 havuz13 yüksek frekans + 3 tüm48 yüksek pozisyon (havuz13 dışı) ──
+    // Veri analizi: %12.59 6/6, en geniş kapsama
+    var outsiderSet = {};
+    outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // C6-B: pool10'dan ilk 6 (en yüksek geri dönme skoru)
-    result.certain6b = pool10.slice(0,6).sort(function(a,b){return a-b;});
-    // C6-C: pool10'dan 3-8. sıralar
-    result.certain6c = pool10.slice(3,9).sort(function(a,b){return a-b;});
-    // C6-D: pool10'dan 4-9. sıralar + ilk 1
-    var dPool = [pool10[0]].concat(pool10.slice(4,9));
-    result.certain6d = dPool.sort(function(a,b){return a-b;});
-    // C6-E: pool10'dan son 6 (7-12. sıralar, daha düşük geri dönme)
-    result.certain6e = sortedOutsiders.slice(4,10).sort(function(a,b){return a-b;});
+    var pool13ByFreq = outsiders.slice().sort(function(a,b){ return freq15[b]-freq15[a]; });
+    var b_pool = pool13ByFreq.slice(0,3);
+
+    var insiders48 = allNums48.filter(function(n){ return !outsiderSet[n]; });
+    var insidersByPos = insiders48.slice().sort(function(a,b){ return posScore15[b]-posScore15[a]; });
+    var b_pos = insidersByPos.slice(0,3);
+
+    result.certain6b = b_pool.concat(b_pos).sort(function(a,b){return a-b;});
+
+    // ── C6-C: 3 havuz13 düşük streak (yeni dışarıda → hemen döner) + 3 havuz13 yüksek frekans ──
+    // Veri analizi: %12.73 6/6 (en yüksek 5+/6 = %47.7)
+    var pool13ByStreakAsc = outsiders.slice().sort(function(a,b){ return streakMap[a]-streakMap[b]; }); // düşük streak önce
+    var c_new = pool13ByStreakAsc.slice(0,3); // yeni dışarıda kalan 3 (hemen döner)
+    var c_new_set = {};
+    c_new.forEach(function(x){ c_new_set[x]=1; });
+    var c_rest = outsiders.filter(function(x){ return !c_new_set[x]; })
+                          .sort(function(a,b){ return freq15[b]-freq15[a]; })
+                          .slice(0,3); // kalan 10'dan frekans yüksek 3
+    result.certain6c = c_new.concat(c_rest).sort(function(a,b){return a-b;});
+
+    // ── C6-D: havuz13 frekans 10tur (AYNI - en iyi >=10X: %4.1) ──
+    result.certain6d = outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; })
+                                        .slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── C6-E: havuz13 frekans 15tur (AYNI) ──
+    result.certain6e = pool13ByFreq.slice(0,6).sort(function(a,b){return a-b;});
   })();
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
