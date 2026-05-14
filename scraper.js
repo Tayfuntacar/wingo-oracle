@@ -1976,9 +1976,10 @@ function startDashboard() {
           h += '</div>';
         }
 
-        // ── KESIN 6-B (turuncu - ana sayfayla aynı) ──
+        // ── KESIN 6-B (turuncu) ──
         var pc6b2 = r.pred_certain6b ? r.pred_certain6b.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
-        var c6bm2raw = parseInt(r.certain6b_match); var c6bm2 = c6bm2raw >= 0 ? c6bm2raw : '-';
+        var c6bm2raw = parseInt(r.certain6b_match);
+        var c6bm2 = c6bm2raw >= 0 ? c6bm2raw : (aAll.length > 0 && pc6b2.length > 0 ? aAll.filter(function(n){ return pc6b2.indexOf(n) !== -1; }).length : '-');
         if (pc6b2.length > 0) {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - B \u2014 <span style="color:#f97316;font-weight:900">' + c6bm2 + '/6 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
@@ -1991,11 +1992,17 @@ function startDashboard() {
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
+          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a1000;border:1px solid #f97316;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
+          h += '</div>';
         }
 
-        // ── KESIN 6-C (mor - ana sayfayla aynı) ──
+        // ── KESIN 6-C (mor) ──
         var pc6c2 = r.pred_certain6c ? r.pred_certain6c.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
-        var c6cm2raw = parseInt(r.certain6c_match); var c6cm2 = c6cm2raw >= 0 ? c6cm2raw : '-';
+        var c6cm2raw = parseInt(r.certain6c_match);
+        var c6cm2 = c6cm2raw >= 0 ? c6cm2raw : (aAll.length > 0 && pc6c2.length > 0 ? aAll.filter(function(n){ return pc6c2.indexOf(n) !== -1; }).length : '-');
         if (pc6c2.length > 0) {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - C \u2014 <span style="color:#a78bfa;font-weight:900">' + c6cm2 + '/6 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
@@ -2008,11 +2015,17 @@ function startDashboard() {
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
+          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#a78bfa;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a1030;border:1px solid #a78bfa;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
+          h += '</div>';
         }
 
-        // ── KESIN 6-D (yeşil - ana sayfayla aynı) ──
+        // ── KESIN 6-D (yeşil) ──
         var pc6d2 = r.pred_certain6d ? r.pred_certain6d.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
-        var c6dm2raw = parseInt(r.certain6d_match); var c6dm2 = c6dm2raw >= 0 ? c6dm2raw : '-';
+        var c6dm2raw = parseInt(r.certain6d_match);
+        var c6dm2 = c6dm2raw >= 0 ? c6dm2raw : (aAll.length > 0 && pc6d2.length > 0 ? aAll.filter(function(n){ return pc6d2.indexOf(n) !== -1; }).length : '-');
         if (pc6d2.length > 0) {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - D \u2014 <span style="color:#34d399;font-weight:900">' + c6dm2 + '/6 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
@@ -2025,11 +2038,17 @@ function startDashboard() {
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
+          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#34d399;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#011a10;border:1px solid #34d399;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
+          h += '</div>';
         }
 
-        // ── KESIN 6-E (pembe - ana sayfayla aynı) ──
+        // ── KESIN 6-E (pembe) ──
         var pc6e2 = r.pred_certain6e ? r.pred_certain6e.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
-        var c6em2raw = parseInt(r.certain6e_match); var c6em2 = c6em2raw >= 0 ? c6em2raw : '-';
+        var c6em2raw = parseInt(r.certain6e_match);
+        var c6em2 = c6em2raw >= 0 ? c6em2raw : (aAll.length > 0 && pc6e2.length > 0 ? aAll.filter(function(n){ return pc6e2.indexOf(n) !== -1; }).length : '-');
         if (pc6e2.length > 0) {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - E \u2014 <span style="color:#f472b6;font-weight:900">' + c6em2 + '/6 tuttu (35 sayida)</span></div>';
           h += '<div class="nr">';
@@ -2042,7 +2061,7 @@ function startDashboard() {
             h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
           });
           h += '</div>';
-          h += '<div style="font-size:10px;color:#5a6180;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">';
+          h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f472b6;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a0510;border:1px solid #f472b6;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
@@ -2093,11 +2112,11 @@ function startDashboard() {
 
         // Özet
         h += '<div class="mi">';
-        h += '<div class="mc">6-A \u2192 35\'te: <strong style="color:' + (c6m>=5?'#22c55e':c6m>=4?'#facc15':'#aab0c4') + '">' + c6m + '/6</strong></div>';
-        if (c6bm2 !== '-') h += '<div class="mc">6-B \u2192 35\'te: <strong style="color:#f97316">' + c6bm2 + '/6</strong></div>';
-        if (c6cm2 !== '-') h += '<div class="mc">6-C \u2192 35\'te: <strong style="color:#a78bfa">' + c6cm2 + '/6</strong></div>';
-        if (c6dm2 !== '-') h += '<div class="mc">6-D \u2192 35\'te: <strong style="color:#34d399">' + c6dm2 + '/6</strong></div>';
-        if (c6em2 !== '-') h += '<div class="mc">6-E \u2192 35\'te: <strong style="color:#f472b6">' + c6em2 + '/6</strong></div>';
+        h += '<div class="mc">6-A \u2192 35\'te: <strong style="color:' + (c6m>=5?'#22c55e':c6m>=4?'#facc15':'#38bdf8') + '">' + c6m + '/6</strong></div>';
+        if (pc6b2.length > 0) h += '<div class="mc">6-B \u2192 35\'te: <strong style="color:#f97316">' + c6bm2 + '/6</strong></div>';
+        if (pc6c2.length > 0) h += '<div class="mc">6-C \u2192 35\'te: <strong style="color:#a78bfa">' + c6cm2 + '/6</strong></div>';
+        if (pc6d2.length > 0) h += '<div class="mc">6-D \u2192 35\'te: <strong style="color:#34d399">' + c6dm2 + '/6</strong></div>';
+        if (pc6e2.length > 0) h += '<div class="mc">6-E \u2192 35\'te: <strong style="color:#f472b6">' + c6em2 + '/6</strong></div>';
         if (jpM2 !== '-') {
           h += '<div class="mc">Jackpot: <strong style="color:' + (jpM2>=4?'#22c55e':jpM2>=3?'#facc15':'#aab0c4') + '">' + jpM2 + '/5</strong></div>';
         }
