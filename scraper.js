@@ -1840,16 +1840,7 @@ function startDashboard() {
       }
       h += '</div></div>';
 
-      // Kesin 7 dagilim
-      h += '</div></div>';
 
-      // Kesin 8 özet + dağılım
-      h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c8favg + ' / 8</div></div>';
-      for (var _k = 0; _k <= 8; _k++) {
-        var _e   = _k >= 6 ? '#22c55e' : _k >= 5 ? '#facc15' : '#ef4444';
-        var _brd = _k >= 6 ? '#22c55e44' : _k >= 5 ? '#facc1544' : '#2a2f42';
-      }
-      h += '</div></div>';
 
       // Jackpot istatistik
       var jpT = 0, jpS = 0, jpDist = {0:0,1:0,2:0,3:0,4:0,5:0};
