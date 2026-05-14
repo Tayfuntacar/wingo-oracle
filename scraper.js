@@ -1919,7 +1919,7 @@ function startDashboard() {
       }
 
       // ── ÇARPAN / KAZANÇ ANALİZİ ──
-      var CARPAN_TBL = [10000,7500,5000,2500,1000,500,300,200,150,100,90,80,70,60,50,40,30,25,20,15,10,9,8,7,6,5,4,3,3,2,2,2,1,1,1];
+      var CARPAN_TBL = [10000,10000,10000,10000,10000,10000,7500,5000,2500,1000,500,300,200,150,100,90,80,70,60,50,40,30,25,20,15,10,9,8,7,6,5,4,3,2,1];
       function calcCarpan(predStr, allStr) {
         if (!predStr || !allStr) return null;
         var pred = predStr.split(',').map(Number);
@@ -2053,7 +2053,7 @@ function startDashboard() {
         var pc8  = r.pred_certain8 ? r.pred_certain8.split(',').map(Number).sort(function(a,b){return a-b;}) : [];
 
         // ── ÇARPAN TABLOSU (pozisyon 0-34 → çarpan) ──
-        var CARPAN = [10000,7500,5000,2500,1000,500,300,200,150,100,90,80,70,60,50,40,30,25,20,15,10,9,8,7,6,5,4,3,3,2,2,2,1,1,1];
+        var CARPAN = [10000,10000,10000,10000,10000,10000,7500,5000,2500,1000,500,300,200,150,100,90,80,70,60,50,40,30,25,20,15,10,9,8,7,6,5,4,3,2,1];
         function getCarpan(predArr, allNums) {
           // predArr ile eşleşen sayıların allNums'daki pozisyonlarını bul
           // 6/6 ise son eşleşen sayının pozisyonuna göre çarpan ver
