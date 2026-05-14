@@ -1931,7 +1931,6 @@ function startDashboard() {
         return lastPos < CARPAN_TBL.length ? CARPAN_TBL[lastPos] : 1;
       }
 
-      // Her kupon için: toplam kazanç, en yüksek çarpan, 6/6 sayısı
       var kuponlar = [
         { key:'A', pred:'pred_certain6',  match:'certain6_match',  label:'Kesin 6-A', color:'#38bdf8' },
         { key:'B', pred:'pred_certain6b', match:'certain6b_match', label:'Kesin 6-B', color:'#f97316' },
@@ -1940,7 +1939,7 @@ function startDashboard() {
         { key:'E', pred:'pred_certain6e', match:'certain6e_match', label:'Kesin 6-E', color:'#f472b6' }
       ];
 
-      var birim = 1; // 1 birim bahis varsayılan
+      var birim = 1;
       var kazancData = {};
       kuponlar.forEach(function(kp) {
         var toplamCarpan = 0, maxCarpan = 0, hit6 = 0, toplamRound = 0;
@@ -1963,12 +1962,10 @@ function startDashboard() {
         kazancData[kp.key] = { toplamCarpan: toplamCarpan, maxCarpan: maxCarpan, hit6: hit6, toplamRound: toplamRound };
       });
 
-      // Genel toplam (tüm kuponlar birlikte oynandı varsayımı: 5 birim/tur)
       var genelToplam = 0;
       kuponlar.forEach(function(kp){ genelToplam += kazancData[kp.key].toplamCarpan; });
-      var toplamHarcanan = (rows.length > 0 ? rows.length : 0) * 5 * birim; // 5 kupon x birim
-      var genelMaxCarpan = 0;
-      var genelMaxKupon = '-';
+      var toplamHarcanan = rows.length * 5 * birim;
+      var genelMaxCarpan = 0, genelMaxKupon = '-';
       kuponlar.forEach(function(kp){
         if (kazancData[kp.key].maxCarpan > genelMaxCarpan) {
           genelMaxCarpan = kazancData[kp.key].maxCarpan;
@@ -1978,6 +1975,7 @@ function startDashboard() {
 
       h += '<div class="st" style="margin-top:16px">Kazanc Analizi (1 Birim = 1€)</div>';
       h += '<div style="background:#1a2a1a;border:1px solid #22c55e44;border-radius:12px;padding:14px;margin-bottom:12px">';
+
       // Özet satırı
       h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #2a3a2a">';
       h += '<div style="text-align:center;flex:1">';
@@ -1995,40 +1993,48 @@ function startDashboard() {
       h += '<div style="text-align:center;flex:1">';
       var netKar = genelToplam - toplamHarcanan;
       var netColor = netKar >= 0 ? '#22c55e' : '#ef4444';
-      var netSign = netKar >= 0 ? '+' : '';
       h += '<div style="font-size:10px;color:#5a6180;margin-bottom:4px">NET KAR/ZARAR</div>';
-      h += '<div style="font-size:18px;font-weight:900;color:' + netColor + '">' + netSign + netKar.toLocaleString() + '€</div>';
+      h += '<div style="font-size:18px;font-weight:900;color:' + netColor + '">' + (netKar >= 0 ? '+' : '') + netKar.toLocaleString() + '€</div>';
       h += '<div style="font-size:10px;color:#5a6180">&nbsp;</div>';
-      h += '</div>';
-      h += '</div>';
+      h += '</div></div>';
 
-      // En yüksek çarpan
+      // En yüksek çarpan - genel
       if (genelMaxCarpan > 0) {
         h += '<div style="display:flex;align-items:center;justify-content:center;gap:10px;background:#2a2000;border:1px solid #facc1544;border-radius:10px;padding:10px;margin-bottom:12px">';
         h += '<span style="font-size:20px">🏆</span>';
         h += '<div style="text-align:center">';
-        h += '<div style="font-size:10px;color:#facc15;letter-spacing:1px">EN YÜKSEK ÇARPAN</div>';
-        h += '<div style="font-size:22px;font-weight:900;color:#facc15">' + genelMaxCarpan.toLocaleString() + 'X</div>';
-        h += '<div style="font-size:10px;color:#5a6180">' + genelMaxKupon + '</div>';
-        h += '</div>';
-        h += '</div>';
+        h += '<div style="font-size:10px;color:#facc15;letter-spacing:1px">TÜM KUPONLARDA EN YÜKSEK ÇARPAN</div>';
+        h += '<div style="font-size:26px;font-weight:900;color:#facc15">' + genelMaxCarpan.toLocaleString() + 'X</div>';
+        h += '<div style="font-size:11px;color:#aab0c4">' + genelMaxKupon + '</div>';
+        h += '</div></div>';
       }
 
-      // Kupon bazlı detay
+      // Kupon bazlı detay - her birinde kendi max X göster
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
       kuponlar.forEach(function(kp) {
         var kd = kazancData[kp.key];
-        h += '<div style="background:#1e2130;border:1px solid #2a2f42;border-radius:10px;padding:10px">';
+        var hasHit = kd.hit6 > 0;
+        var borderCol = hasHit ? kp.color + '55' : '#2a2f42';
+        h += '<div style="background:#1e2130;border:1px solid ' + borderCol + ';border-radius:10px;padding:10px">';
         h += '<div style="font-size:11px;font-weight:800;color:' + kp.color + ';margin-bottom:6px">' + kp.label + '</div>';
-        h += '<div style="font-size:13px;font-weight:900;color:#22c55e">+' + kd.toplamCarpan.toLocaleString() + '€</div>';
-        h += '<div style="font-size:10px;color:#5a6180;margin-top:2px">' + kd.hit6 + ' kez 6/6 tuttu</div>';
+        h += '<div style="font-size:14px;font-weight:900;color:#22c55e">+' + kd.toplamCarpan.toLocaleString() + '€</div>';
+        h += '<div style="font-size:10px;color:#5a6180;margin-top:2px">' + kd.hit6 + ' kez 6/6</div>';
+        // En yüksek X - belirgin göster
         if (kd.maxCarpan > 0) {
-          h += '<div style="font-size:10px;color:#facc15;margin-top:3px">En yüksek: ' + kd.maxCarpan.toLocaleString() + 'X</div>';
+          var mxColor = kd.maxCarpan >= 100 ? '#22c55e' : kd.maxCarpan >= 10 ? '#facc15' : '#f97316';
+          h += '<div style="margin-top:6px;background:#2a2000;border:1px solid ' + mxColor + '44;border-radius:6px;padding:3px 7px;display:inline-block">';
+          h += '<span style="font-size:9px;color:#5a6180">MAX </span>';
+          h += '<span style="font-size:14px;font-weight:900;color:' + mxColor + '">' + kd.maxCarpan.toLocaleString() + 'X</span>';
+          h += '</div>';
+        } else {
+          h += '<div style="margin-top:6px;background:#1a1d2e;border:1px solid #2a2f42;border-radius:6px;padding:3px 7px;display:inline-block">';
+          h += '<span style="font-size:9px;color:#5a6180">MAX </span>';
+          h += '<span style="font-size:13px;font-weight:700;color:#3a4060">—</span>';
+          h += '</div>';
         }
         h += '</div>';
       });
-      h += '</div>';
-      h += '</div>'; // kazanc analizi kapat
+      h += '</div></div>'; // grid + kazanc analizi kapat
 
       h += '<div class="st" style="margin-top:16px">Cekilis Bazli Detay</div>';
 
