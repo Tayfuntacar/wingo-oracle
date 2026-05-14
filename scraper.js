@@ -1795,41 +1795,59 @@ function startDashboard() {
       h += '<div class="sp" style="color:' + fc + '">%' + firstPct + '</div><div class="ss">' + firstHit + '/' + firstTotal + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(firstPct * 4, 100) + '%;background:' + fc + '"></div></div></div></div>';
 
-      // Kesin 6 özet + dağılım
+      // Kesin 6 özet + dağılım — DB yoksa all_numbers'dan hesapla
+      function calcC6Stats(rows, matchField, predField) {
+        var T=0, S=0, Perf=0;
+        rows.forEach(function(rr) {
+          if (!rr[predField] || rr[predField] === '') return;
+          var m = parseInt(rr[matchField]);
+          if (isNaN(m) || m < 0) {
+            // fallback: all_numbers üzerinden hesapla
+            if (rr.actual_all) {
+              var aAll2 = rr.actual_all.split(',').map(Number);
+              var pArr  = rr[predField].split(',').map(Number);
+              m = aAll2.filter(function(n){ return pArr.indexOf(n) !== -1; }).length;
+            } else { return; }
+          }
+          T++; S += m; if (m === 6) Perf++;
+        });
+        return { T: T, S: S, Perf: Perf };
+      }
+
       var c6perfect = c6Dist[6] || 0;
       var c6ppct = c6T > 0 ? Math.round(c6perfect / c6T * 100) : 0;
       var c6pc = c6ppct >= 20 ? '#22c55e' : c6ppct >= 5 ? '#facc15' : '#ef4444';
       h += '<div class="sr"><div class="sl">Kesin 6-A (6/6 tuttu)</div><div class="srr">';
       h += '<div class="sp" style="color:' + c6pc + '">%' + c6ppct + '</div><div class="ss">' + c6perfect + '/' + c6T + ' tuttu</div>';
       h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ppct * 4, 100) + '%;background:' + c6pc + '"></div></div></div></div>';
-      // Kesin 6-B (13 havuzdan)
-      var c6bT=0,c6bS=0,c6bPerf=0;
-      rows.forEach(function(rr){ var m=parseInt(rr.certain6b_match); if(!isNaN(m)&&m>=0){c6bT++;c6bS+=m;if(m===6)c6bPerf++;} });
-      var c6bPct=c6bT>0?Math.round(c6bPerf/c6bT*100):0;
+
+      // Kesin 6-B
+      var _sb = calcC6Stats(rows, 'certain6b_match', 'pred_certain6b');
+      var c6bPct = _sb.T > 0 ? Math.round(_sb.Perf / _sb.T * 100) : 0;
       h += '<div class="sr"><div class="sl">Kesin 6-B (6/6 tuttu)</div><div class="srr">';
-      h += '<div class="sp" style="color:#f97316">%'+c6bPct+'</div><div class="ss">'+c6bPerf+'/'+c6bT+' tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6bPct*4,100)+'%;background:#f97316"></div></div></div></div>';
-      // Kesin 6-C (13 havuzdan)
-      var c6cT=0,c6cS=0,c6cPerf=0;
-      rows.forEach(function(rr){ var m=parseInt(rr.certain6c_match); if(!isNaN(m)&&m>=0){c6cT++;c6cS+=m;if(m===6)c6cPerf++;} });
-      var c6cPct=c6cT>0?Math.round(c6cPerf/c6cT*100):0;
+      h += '<div class="sp" style="color:#f97316">%' + c6bPct + '</div><div class="ss">' + _sb.Perf + '/' + _sb.T + ' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6bPct * 4, 100) + '%;background:#f97316"></div></div></div></div>';
+
+      // Kesin 6-C
+      var _sc = calcC6Stats(rows, 'certain6c_match', 'pred_certain6c');
+      var c6cPct = _sc.T > 0 ? Math.round(_sc.Perf / _sc.T * 100) : 0;
       h += '<div class="sr"><div class="sl">Kesin 6-C (6/6 tuttu)</div><div class="srr">';
-      h += '<div class="sp" style="color:#a78bfa">%'+c6cPct+'</div><div class="ss">'+c6cPerf+'/'+c6cT+' tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6cPct*4,100)+'%;background:#a78bfa"></div></div></div></div>';
+      h += '<div class="sp" style="color:#a78bfa">%' + c6cPct + '</div><div class="ss">' + _sc.Perf + '/' + _sc.T + ' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6cPct * 4, 100) + '%;background:#a78bfa"></div></div></div></div>';
+
       // Kesin 6-D
-      var c6dT=0,c6dPerf=0;
-      rows.forEach(function(rr){ var m=parseInt(rr.certain6d_match); if(!isNaN(m)&&m>=0){c6dT++;if(m===6)c6dPerf++;} });
-      var c6dPct=c6dT>0?Math.round(c6dPerf/c6dT*100):0;
+      var _sd = calcC6Stats(rows, 'certain6d_match', 'pred_certain6d');
+      var c6dPct = _sd.T > 0 ? Math.round(_sd.Perf / _sd.T * 100) : 0;
       h += '<div class="sr"><div class="sl">Kesin 6-D (6/6 tuttu)</div><div class="srr">';
-      h += '<div class="sp" style="color:#34d399">%'+c6dPct+'</div><div class="ss">'+c6dPerf+'/'+c6dT+' tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6dPct*4,100)+'%;background:#34d399"></div></div></div></div>';
+      h += '<div class="sp" style="color:#34d399">%' + c6dPct + '</div><div class="ss">' + _sd.Perf + '/' + _sd.T + ' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6dPct * 4, 100) + '%;background:#34d399"></div></div></div></div>';
+
       // Kesin 6-E
-      var c6eT=0,c6ePerf=0;
-      rows.forEach(function(rr){ var m=parseInt(rr.certain6e_match); if(!isNaN(m)&&m>=0){c6eT++;if(m===6)c6ePerf++;} });
-      var c6ePct=c6eT>0?Math.round(c6ePerf/c6eT*100):0;
+      var _se = calcC6Stats(rows, 'certain6e_match', 'pred_certain6e');
+      var c6ePct = _se.T > 0 ? Math.round(_se.Perf / _se.T * 100) : 0;
       h += '<div class="sr"><div class="sl">Kesin 6-E (6/6 tuttu)</div><div class="srr">';
-      h += '<div class="sp" style="color:#f472b6">%'+c6ePct+'</div><div class="ss">'+c6ePerf+'/'+c6eT+' tuttu</div>';
-      h += '<div class="bar"><div class="bf" style="width:'+Math.min(c6ePct*4,100)+'%;background:#f472b6"></div></div></div></div>';
+      h += '<div class="sp" style="color:#f472b6">%' + c6ePct + '</div><div class="ss">' + _se.Perf + '/' + _se.T + ' tuttu</div>';
+      h += '<div class="bar"><div class="bf" style="width:' + Math.min(c6ePct * 4, 100) + '%;background:#f472b6"></div></div></div></div>';
       h += '<div class="ar"><div class="sl">Kesin 6-A \u2192 35 sayida kac tuttu (ort.)</div>';
       h += '<div style="font-size:16px;font-weight:900;color:#a855f7">' + c6avg + ' / 6</div></div>';
       h += '<div style="padding:8px 0;border-bottom:1px solid #1e2130"><div style="font-size:10px;color:#5a6180;margin-bottom:6px">KESIN 6 DAGILIMI (35 SAYI)</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
