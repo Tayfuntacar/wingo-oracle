@@ -1985,17 +1985,18 @@ function startDashboard() {
       // Her kupon için aynı sayılar N tur üst üste oynanırsa kazanç/zarar
       function calcNturData(nTur) {
         var data = {};
+        // rows DESC geldi (en yeni=0), ASC'ye çevir (en eski=0)
+        var rowsAsc = rows.slice().reverse();
         kuponlar.forEach(function(kp) {
           var toplamCarpan=0, maxCarpan=0, hit6=0, toplamRound=0;
-          // rows DESC sırada - ri=0 en yeni, ri+1 daha eski
-          // Aynı kuponu nTur tur oyna: ri (tahmin) → ri-1, ri-2 (sonraki gerçek drawlar)
-          for (var ri=rows.length-1; ri>=0; ri--) {
-            var rr = rows[ri];
+          for (var ri=0; ri<rowsAsc.length; ri++) {
+            var rr = rowsAsc[ri];
             if (!rr[kp.pred] || rr[kp.pred]==='') continue;
+            // Aynı kuponu nTur tur oyna: ri, ri+1, ri+2 (zamansal sırayla ilerle)
             for (var ti=0; ti<nTur; ti++) {
-              var targetIdx = ri - ti; // DESC sırada: daha küçük idx = daha yeni draw
-              if (targetIdx < 0) break;
-              var targetRow = rows[targetIdx];
+              var targetIdx = ri + ti;
+              if (targetIdx >= rowsAsc.length) break;
+              var targetRow = rowsAsc[targetIdx];
               if (!targetRow || !targetRow.actual_all) break;
               toplamRound++;
               var a2 = targetRow.actual_all.split(',').map(Number);
