@@ -1987,12 +1987,15 @@ function startDashboard() {
         var data = {};
         kuponlar.forEach(function(kp) {
           var toplamCarpan=0, maxCarpan=0, hit6=0, toplamRound=0;
-          for (var ri=0; ri<rows.length; ri++) {
+          // rows DESC sırada - ri=0 en yeni, ri+1 daha eski
+          // Aynı kuponu nTur tur oyna: ri (tahmin) → ri-1, ri-2 (sonraki gerçek drawlar)
+          for (var ri=rows.length-1; ri>=0; ri--) {
             var rr = rows[ri];
             if (!rr[kp.pred] || rr[kp.pred]==='') continue;
-            // Bu round ve sonraki (nTur-1) round'a aynı kuponu oyna
             for (var ti=0; ti<nTur; ti++) {
-              var targetRow = rows[ri+ti];
+              var targetIdx = ri - ti; // DESC sırada: daha küçük idx = daha yeni draw
+              if (targetIdx < 0) break;
+              var targetRow = rows[targetIdx];
               if (!targetRow || !targetRow.actual_all) break;
               toplamRound++;
               var a2 = targetRow.actual_all.split(',').map(Number);
