@@ -106,7 +106,7 @@ db.connect().then(function() {
 
 function backfillJackpot() {
   return dbQuery(
-    "SELECT p.id, p.pred_jackpot, d.all_numbers FROM predictions p LEFT JOIN draws d ON (p.round+1) = d.round WHERE p.ou_hit != -1 AND p.pred_jackpot IS NOT NULL AND p.pred_jackpot != '' AND d.all_numbers IS NOT NULL AND (p.jackpot_match IS NULL OR p.jackpot_match = -1)"
+    "SELECT p.id, p.pred_jackpot, d.all_numbers FROM predictions p LEFT JOIN draws d ON p.round = d.round WHERE p.ou_hit != -1 AND p.pred_jackpot IS NOT NULL AND p.pred_jackpot != '' AND d.all_numbers IS NOT NULL AND (p.jackpot_match IS NULL OR p.jackpot_match = -1)"
   ).then(function(res) {
     if (res.rows.length === 0) { console.log('Jackpot backfill: guncellenecek kayit yok.'); return; }
     console.log('Jackpot backfill: ' + res.rows.length + ' kayit guncelleniyor...');
@@ -124,7 +124,7 @@ function backfillJackpot() {
 
 function backfillCertain6() {
   return dbQuery(
-    "SELECT p.id, p.pred_certain6, d.all_numbers FROM predictions p LEFT JOIN draws d ON (p.round+1) = d.round WHERE p.ou_hit != -1 AND p.pred_certain6 IS NOT NULL AND p.pred_certain6 != '' AND d.all_numbers IS NOT NULL"
+    "SELECT p.id, p.pred_certain6, d.all_numbers FROM predictions p LEFT JOIN draws d ON p.round = d.round WHERE p.ou_hit != -1 AND p.pred_certain6 IS NOT NULL AND p.pred_certain6 != '' AND d.all_numbers IS NOT NULL"
   ).then(function(res) {
     if (res.rows.length === 0) { console.log('Backfill: guncellenecek kayit yok.'); return; }
     console.log('Backfill: ' + res.rows.length + ' kayit certain6_match guncelleniyor...');
@@ -1772,7 +1772,7 @@ function startDashboard() {
   });
 
   app.get('/rapor', function(req, res) {
-    dbQuery("SELECT DISTINCT ON (p.id) p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON (p.global_round+1)=d.global_round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.id DESC, p.created_at DESC LIMIT 1000").then(function(result) {
+    dbQuery("SELECT DISTINCT ON (p.id) p.*,d.all_numbers as actual_all FROM predictions p LEFT JOIN draws d ON p.round=d.round WHERE p.ou_hit != -1 AND p.created_at > NOW() - INTERVAL '7 days' ORDER BY p.id DESC, p.created_at DESC LIMIT 1000").then(function(result) {
       var rows = result.rows;
       var ouHit = 0, ouTotal = 0, colorHit = 0, colorTotal = 0, firstHit = 0, firstTotal = 0;
       var c6T = 0, c6S = 0, c6Dist = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
