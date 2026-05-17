@@ -1515,6 +1515,19 @@ function predict(draws) {
       }
     }
 
+    // W=20 frekans için ayrı hesap
+    var freq20 = {};
+    for (var fi=1; fi<=48; fi++) freq20[fi]=0;
+    var useLen20 = Math.min(draws.length, 20);
+    for (var di2=0; di2<useLen20; di2++) {
+      var dNums2 = allNumsArr[di2];
+      for (var pi3=0; pi3<dNums2.length; pi3++) {
+        var num2 = dNums2[pi3];
+        if (num2<1||num2>48) continue;
+        freq20[num2]++;
+      }
+    }
+
     // Streak: her outsider için kaç turdur dışarıda
     var streakMap = {};
     outsiders.forEach(function(num) {
@@ -1530,9 +1543,9 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // ── A: W=10 frekans tüm 48 (net +271, max 300X - EN İYİ) ──
+    // ── A: W=20 frekans tüm 48 (analiz: net +52, %23.5 6/6) ──
     result.certain6 = allNums48.slice()
-      .sort(function(a,b){ return freq10[b]-freq10[a]; })
+      .sort(function(a,b){ return freq20[b]-freq20[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
     // ── B: 3 pool13 yüksek frekans W15 + 3 tüm48 yüksek pozisyon (havuz dışı) ──
@@ -1542,11 +1555,9 @@ function predict(draws) {
     var b_pos = insiders.slice().sort(function(a,b){ return posScore15[b]-posScore15[a]; }).slice(0,3);
     result.certain6b = b_pool.concat(b_pos).sort(function(a,b){return a-b;});
 
-    // ── C: REVİZE - pool13 yüksek streak (eski dışarıda = yüksek çarpan pozisyonu) + yüksek frekans ──
-    // Analiz: yüksek streak sayılar erken döndüğünde yüksek çarpana düşüyor
-    // streak>=3 olanlar + frekans yüksek 3 = karma yüksek çarpan odaklı
+    // ── C: yüksek streak + frekans karma (değişmedi) ──
     var pool13HighStreak = outsiders.slice()
-      .sort(function(a,b){ return streakMap[b]-streakMap[a]; }); // yüksek streak önce
+      .sort(function(a,b){ return streakMap[b]-streakMap[a]; });
     var c_high = pool13HighStreak.slice(0,3);
     var c_high_set={};
     c_high.forEach(function(x){ c_high_set[x]=1; });
@@ -1554,33 +1565,15 @@ function predict(draws) {
       .sort(function(a,b){ return freq15[b]-freq15[a]; }).slice(0,3);
     result.certain6c = c_high.concat(c_freq).sort(function(a,b){return a-b;});
 
-    // ── D: REVİZE - pool13 orta streak (streak ~1-3) sayıları ──
-    // 3 round simülasyonunda en iyi: net +8 (tek başabaş strateji)
-    // Mantık: ne çok yeni (hemen dönmez) ne çok eski (geç döner) — tatlı nokta streak 1-3
-    var pool13MidStreak = outsiders.slice()
-      .sort(function(a,b){ return Math.abs(streakMap[a]-2) - Math.abs(streakMap[b]-2); }); // streak~2 önce
-    result.certain6d = pool13MidStreak.slice(0,6).sort(function(a,b){return a-b;});
+    // ── D: REVİZE - pool13 frekans W15 (analiz: %23.5 6/6, 5+=%61.8) ──
+    result.certain6d = outsiders.slice()
+      .sort(function(a,b){ return freq15[b]-freq15[a]; })
+      .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── E: REVİZE - pool13 komşu sayılar (±1-2) + frekans filtresi ──
-    // Mantık: 13 havuzdaki sayıların komşuları havuzdan değil ama yakın → erken düşme ihtimali
-    var eCandidates={};
-    outsiders.forEach(function(n){
-      [-2,-1,1,2].forEach(function(delta){
-        var nb = n+delta;
-        if (nb>=1 && nb<=48 && !outsiderSet[nb]) {
-          if (!eCandidates[nb]) eCandidates[nb]=0;
-          eCandidates[nb]++; // kaç komşuya yakın olduğu (çekicilik skoru)
-        }
-      });
-    });
-    // Komşuluk skoru × frekans10 kombinasyonu
-    var eSorted = Object.keys(eCandidates).map(Number)
-      .sort(function(a,b){
-        var scoreA = eCandidates[a]*3 + freq10[a];
-        var scoreB = eCandidates[b]*3 + freq10[b];
-        return scoreB - scoreA;
-      });
-    result.certain6e = eSorted.slice(0,6).sort(function(a,b){return a-b;});
+    // ── E: REVİZE - pool13 W20 frekans (analiz: net +20, %26.5 6/6) ──
+    result.certain6e = outsiders.slice()
+      .sort(function(a,b){ return freq20[b]-freq20[a]; })
+      .slice(0,6).sort(function(a,b){return a-b;});
   })();
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
