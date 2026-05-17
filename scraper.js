@@ -1543,17 +1543,34 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // ── A: W=20 frekans tüm 48 (analiz: net +52, %23.5 6/6) ──
+    // ── A: POZİSYON AĞIRLIKLI W=10 (88 test: Net+150, %19.3 6/6, MaxX 100X) ──
+    // Son 10 turda erken pozisyona düşen sayılar → yüksek çarpan hedefi
+    var posScore10 = {};
+    for (var pi4=1; pi4<=48; pi4++) posScore10[pi4]=0;
+    for (var di3=0; di3<Math.min(draws.length,10); di3++) {
+      var dN3 = allNumsArr[di3];
+      for (var pi5=0; pi5<dN3.length; pi5++) {
+        var n3 = dN3[pi5];
+        if (n3>=1 && n3<=48) posScore10[n3] += (35-pi5);
+      }
+    }
     result.certain6 = allNums48.slice()
-      .sort(function(a,b){ return freq20[b]-freq20[a]; })
+      .sort(function(a,b){ return posScore10[b]-posScore10[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── B: 3 pool13 yüksek frekans W15 + 3 tüm48 yüksek pozisyon (havuz dışı) ──
-    var pool13ByFreq15 = outsiders.slice().sort(function(a,b){ return freq15[b]-freq15[a]; });
-    var b_pool = pool13ByFreq15.slice(0,3);
-    var insiders = allNums48.filter(function(n){ return !outsiderSet[n]; });
-    var b_pos = insiders.slice().sort(function(a,b){ return posScore15[b]-posScore15[a]; }).slice(0,3);
-    result.certain6b = b_pool.concat(b_pos).sort(function(a,b){return a-b;});
+    // ── B: KARMA (frekans×0.4 + pozisyon×0.6) W=10 (Net+102, MaxX 100X) ──
+    var bScore = {};
+    var maxF10=1, maxP10=1;
+    for (var bi=1; bi<=48; bi++) {
+      if (freq10[bi]>maxF10) maxF10=freq10[bi];
+      if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
+    }
+    for (var bi2=1; bi2<=48; bi2++) {
+      bScore[bi2] = 0.4*(freq10[bi2]/maxF10) + 0.6*(posScore10[bi2]/maxP10);
+    }
+    result.certain6b = allNums48.slice()
+      .sort(function(a,b){ return bScore[b]-bScore[a]; })
+      .slice(0,6).sort(function(a,b){return a-b;});
 
     // ── C: yüksek streak + frekans karma (değişmedi) ──
     var pool13HighStreak = outsiders.slice()
@@ -1565,12 +1582,12 @@ function predict(draws) {
       .sort(function(a,b){ return freq15[b]-freq15[a]; }).slice(0,3);
     result.certain6c = c_high.concat(c_freq).sort(function(a,b){return a-b;});
 
-    // ── D: REVİZE - pool13 frekans W15 (analiz: %23.5 6/6, 5+=%61.8) ──
+    // ── D: pool13 frekans W10 (Net+26, %22.7 6/6) ──
     result.certain6d = outsiders.slice()
-      .sort(function(a,b){ return freq15[b]-freq15[a]; })
+      .sort(function(a,b){ return freq10[b]-freq10[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── E: REVİZE - pool13 W20 frekans (analiz: net +20, %26.5 6/6) ──
+    // ── E: pool13 frekans W20 (Net+8, %19.3 6/6, 5+=%60.2) ──
     result.certain6e = outsiders.slice()
       .sort(function(a,b){ return freq20[b]-freq20[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
