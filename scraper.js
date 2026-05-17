@@ -106,7 +106,7 @@ db.connect().then(function() {
 
 function backfillJackpot() {
   return dbQuery(
-    "SELECT p.id, p.pred_jackpot, d.all_numbers FROM predictions p LEFT JOIN draws d ON p.round = d.round WHERE p.ou_hit != -1 AND p.pred_jackpot IS NOT NULL AND p.pred_jackpot != '' AND d.all_numbers IS NOT NULL AND (p.jackpot_match IS NULL OR p.jackpot_match = -1)"
+    "SELECT p.id, p.pred_jackpot, d.all_numbers FROM predictions p LEFT JOIN draws d ON (p.round+1) = d.round WHERE p.ou_hit != -1 AND p.pred_jackpot IS NOT NULL AND p.pred_jackpot != '' AND d.all_numbers IS NOT NULL AND (p.jackpot_match IS NULL OR p.jackpot_match = -1)"
   ).then(function(res) {
     if (res.rows.length === 0) { console.log('Jackpot backfill: guncellenecek kayit yok.'); return; }
     console.log('Jackpot backfill: ' + res.rows.length + ' kayit guncelleniyor...');
@@ -124,7 +124,7 @@ function backfillJackpot() {
 
 function backfillCertain6() {
   return dbQuery(
-    "SELECT p.id, p.pred_certain6, d.all_numbers FROM predictions p LEFT JOIN draws d ON p.round = d.round WHERE p.ou_hit != -1 AND p.pred_certain6 IS NOT NULL AND p.pred_certain6 != '' AND d.all_numbers IS NOT NULL"
+    "SELECT p.id, p.pred_certain6, d.all_numbers FROM predictions p LEFT JOIN draws d ON (p.round+1) = d.round WHERE p.ou_hit != -1 AND p.pred_certain6 IS NOT NULL AND p.pred_certain6 != '' AND d.all_numbers IS NOT NULL"
   ).then(function(res) {
     if (res.rows.length === 0) { console.log('Backfill: guncellenecek kayit yok.'); return; }
     console.log('Backfill: ' + res.rows.length + ' kayit certain6_match guncelleniyor...');
@@ -283,7 +283,7 @@ function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
 }
 
 function updatePredictions(round, first, first5, allNums, ou, renk) {
-  dbQuery('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7 FROM predictions WHERE round = $1', [round])
+  dbQuery('SELECT id, pred_ou, pred_color, pred_first, pred_first5, pred_certain8, pred_certain6, pred_certain7, pred_certain6b, pred_certain6c, pred_certain6d, pred_certain6e, pred_jackpot FROM predictions WHERE round = $1', [round])
   .then(function(res) {
     if (res.rows.length === 0) { console.log('Round ' + round + ' icin bekleyen tahmin yok.'); return; }
     res.rows.forEach(function(row) {
