@@ -2209,10 +2209,11 @@ function startDashboard() {
           pc6.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            var bg  = inIlk5 ? '#0f4a66' : inFull ? '#0c2a3a' : '#2a3040';
-            var brd = inIlk5 ? '#38bdf8'  : inFull ? '#38bdf8' : '#4a5270';
-            var cl  = inIlk5 ? '#7dd3fc'  : inFull ? '#38bdf8' : '#aab0c4';
-            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
+            var bg  = inIlk5 ? '#38bdf8' : inFull ? '#0c2a3a' : '#2a3040';
+            var brd = inIlk5 ? '#38bdf8' : inFull ? '#38bdf8' : '#4a5270';
+            var cl  = inIlk5 ? '#000'    : inFull ? '#38bdf8' : '#aab0c4';
+            var fw  = inIlk5 ? '900' : '400';
+            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + ';font-weight:' + fw + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
@@ -2234,10 +2235,11 @@ function startDashboard() {
           pc6b2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            var bg  = inIlk5 ? '#3a1500' : inFull ? '#2a1000' : '#2a3040';
+            var bg  = inIlk5 ? '#f97316' : inFull ? '#2a1000' : '#2a3040';
             var brd = inIlk5 ? '#f97316' : inFull ? '#f97316' : '#4a5270';
-            var cl  = inIlk5 ? '#fb923c' : inFull ? '#f97316' : '#aab0c4';
-            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
+            var cl  = inIlk5 ? '#000'    : inFull ? '#f97316' : '#aab0c4';
+            var fw  = inIlk5 ? '900' : '400';
+            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + ';font-weight:' + fw + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
@@ -2259,10 +2261,11 @@ function startDashboard() {
           pc6c2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            var bg  = inIlk5 ? '#2a1a50' : inFull ? '#1a1030' : '#2a3040';
+            var bg  = inIlk5 ? '#a78bfa' : inFull ? '#1a1030' : '#2a3040';
             var brd = inIlk5 ? '#a78bfa' : inFull ? '#a78bfa' : '#4a5270';
-            var cl  = inIlk5 ? '#c4b5fd' : inFull ? '#a78bfa' : '#aab0c4';
-            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
+            var cl  = inIlk5 ? '#000'    : inFull ? '#a78bfa' : '#aab0c4';
+            var fw  = inIlk5 ? '900' : '400';
+            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + ';font-weight:' + fw + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
@@ -2284,10 +2287,11 @@ function startDashboard() {
           pc6d2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            var bg  = inIlk5 ? '#012a1a' : inFull ? '#011a10' : '#2a3040';
+            var bg  = inIlk5 ? '#34d399' : inFull ? '#011a10' : '#2a3040';
             var brd = inIlk5 ? '#34d399' : inFull ? '#34d399' : '#4a5270';
-            var cl  = inIlk5 ? '#6ee7b7' : inFull ? '#34d399' : '#aab0c4';
-            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
+            var cl  = inIlk5 ? '#000'    : inFull ? '#34d399' : '#aab0c4';
+            var fw  = inIlk5 ? '900' : '400';
+            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + ';font-weight:' + fw + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
@@ -2309,10 +2313,11 @@ function startDashboard() {
           pc6e2.forEach(function(num) {
             var inIlk5 = af5.indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
-            var bg  = inIlk5 ? '#2a0a1a' : inFull ? '#1a0510' : '#2a3040';
+            var bg  = inIlk5 ? '#f472b6' : inFull ? '#1a0510' : '#2a3040';
             var brd = inIlk5 ? '#f472b6' : inFull ? '#f472b6' : '#4a5270';
-            var cl  = inIlk5 ? '#f9a8d4' : inFull ? '#f472b6' : '#aab0c4';
-            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + '">' + num + '</div>';
+            var cl  = inIlk5 ? '#000'    : inFull ? '#f472b6' : '#aab0c4';
+            var fw  = inIlk5 ? '900' : '400';
+            h += '<div class="nb" style="background:' + bg + ';border:2px solid ' + brd + ';color:' + cl + ';font-weight:' + fw + '">' + num + '</div>';
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
