@@ -332,6 +332,7 @@ function saveNextPrediction(round, globalRound, weekNum, callback) {
     var pred;
     try { pred = predict(draws); } catch(e) { console.log('Predict hatasi:', e.message); if (callback) callback(); return; }
     if (!pred || !pred.over_under) { console.log('Tahmin uretilmedi'); if (callback) callback(); return; }
+    console.log('DEBUG certain6b:', pred.certain6b, 'certain6c:', pred.certain6c, 'certain6d:', pred.certain6d, 'certain6e:', pred.certain6e);
     globalPredCache = pred;
     var nextRound = round + 1;
     var nextGlobalRound = globalRound + 1;
