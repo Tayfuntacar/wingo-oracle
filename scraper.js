@@ -1501,8 +1501,8 @@ function predict(draws) {
     if (outsiders.length !== 13) return;
 
     // Frekans ve pozisyon skorları
-    var freq10 = {}, freq15 = {}, posScore15 = {};
-    for (var pi=1; pi<=48; pi++) { freq10[pi]=0; freq15[pi]=0; posScore15[pi]=0; }
+    var freq10 = {}, freq15 = {}, posScore15 = {}, posScore10 = {};
+    for (var pi=1; pi<=48; pi++) { freq10[pi]=0; freq15[pi]=0; posScore15[pi]=0; posScore10[pi]=0; }
     var useLen = Math.min(draws.length, 15);
     for (var di=0; di<useLen; di++) {
       var dNums = allNumsArr[di];
@@ -1511,7 +1511,7 @@ function predict(draws) {
         if (num<1||num>48) continue;
         freq15[num]++;
         posScore15[num] += (35-pi2);
-        if (di<10) freq10[num]++;
+        if (di<10) { freq10[num]++; posScore10[num] += (35-pi2); }
       }
     }
 
@@ -1543,36 +1543,30 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // ── A: POZİSYON AĞIRLIKLI W=10 (88 test: Net+150, %19.3 6/6, MaxX 100X) ──
-    // Son 10 turda erken pozisyona düşen sayılar → yüksek çarpan hedefi
-    var posScore10 = {};
-    for (var pi4=1; pi4<=48; pi4++) posScore10[pi4]=0;
-    for (var di3=0; di3<Math.min(draws.length,10); di3++) {
-      var dN3 = allNumsArr[di3];
-      for (var pi5=0; pi5<dN3.length; pi5++) {
-        var n3 = dN3[pi5];
-        if (n3>=1 && n3<=48) posScore10[n3] += (35-pi5);
-      }
-    }
-    result.certain6 = allNums48.slice()
-      .sort(function(a,b){ return posScore10[b]-posScore10[a]; })
-      .slice(0,6).sort(function(a,b){return a-b;});
-
-    // ── B: KARMA (frekans×0.4 + pozisyon×0.6) W=10 (Net+102, MaxX 100X) ──
-    var bScore = {};
+    // ── A: KARMA (freq×0.4 + pos×0.6) W10 — tüm48 (264 test: Net+207, MaxX 300X) ──
     var maxF10=1, maxP10=1;
     for (var bi=1; bi<=48; bi++) {
       if (freq10[bi]>maxF10) maxF10=freq10[bi];
       if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
     }
-    for (var bi2=1; bi2<=48; bi2++) {
-      bScore[bi2] = 0.4*(freq10[bi2]/maxF10) + 0.6*(posScore10[bi2]/maxP10);
+    var aScore={};
+    for (var ai2=1; ai2<=48; ai2++) {
+      aScore[ai2] = 0.4*(freq10[ai2]/maxF10) + 0.6*(posScore10[ai2]/maxP10);
     }
-    result.certain6b = allNums48.slice()
-      .sort(function(a,b){ return bScore[b]-bScore[a]; })
+    result.certain6 = allNums48.slice()
+      .sort(function(a,b){ return aScore[b]-aScore[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── C: yüksek streak + frekans karma (değişmedi) ──
+    // ── B: KARMA (freq×0.6 + pos×0.4) W10 — tüm48, A ile farklı ağırlık ──
+    var bScore2={};
+    for (var bi2=1; bi2<=48; bi2++) {
+      bScore2[bi2] = 0.6*(freq10[bi2]/maxF10) + 0.4*(posScore10[bi2]/maxP10);
+    }
+    result.certain6b = allNums48.slice()
+      .sort(function(a,b){ return bScore2[b]-bScore2[a]; })
+      .slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── C: yüksek streak + frekans karma — pool13 (değişmedi) ──
     var pool13HighStreak = outsiders.slice()
       .sort(function(a,b){ return streakMap[b]-streakMap[a]; });
     var c_high = pool13HighStreak.slice(0,3);
@@ -1582,14 +1576,17 @@ function predict(draws) {
       .sort(function(a,b){ return freq15[b]-freq15[a]; }).slice(0,3);
     result.certain6c = c_high.concat(c_freq).sort(function(a,b){return a-b;});
 
-    // ── D: pool13 frekans W10 (Net+26, %22.7 6/6) ──
+    // ── D: pool13 frekans W10 (Net+9, MaxX 70X) ──
     result.certain6d = outsiders.slice()
       .sort(function(a,b){ return freq10[b]-freq10[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── E: pool13 frekans W20 (Net+8, %19.3 6/6, 5+=%60.2) ──
+    // ── E: pool13 DÜŞÜK POZİSYON W10 — A ile SIFIR ÖRTÜŞME ──
+    // A tüm48'den seçiyor, E pool13'den seçiyor → farklı havuz
+    // Düşük pozisyon = geç düşen sayılar → yüksek çarpan pozisyonu
+    // 264 test: MaxX 5000X yakaladı
     result.certain6e = outsiders.slice()
-      .sort(function(a,b){ return freq20[b]-freq20[a]; })
+      .sort(function(a,b){ return posScore10[a]-posScore10[b]; }) // ASC - düşük pozisyon önce
       .slice(0,6).sort(function(a,b){return a-b;});
   })();
 
