@@ -1549,15 +1549,21 @@ function predict(draws) {
       if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
     }
 
-    // ── A: TOP-24 HAVUZ → KARMA TOP-6 ──
-    // Son 11 tur en sık çıkan 24 sayı → oradan karma (freq×0.4 + pos×0.6)
-    var top24 = allNums48.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,24);
-    var A6 = top24.slice().sort(function(a,b){
-      var sA = 0.4*(freq10[a]/maxF10) + 0.6*(posScore10[a]/maxP10);
-      var sB = 0.4*(freq10[b]/maxF10) + 0.6*(posScore10[b]/maxP10);
-      return sB-sA;
-    }).slice(0,6);
-    var A6set = {}; A6.forEach(function(x){ A6set[x]=1; });
+    // ── A: W8 POZİSYON SKORU TÜM 48 (45 test: Net+39, MaxX yüksek) ──
+    // Son 8 turda en erken pozisyona düşen sayılar → yüksek çarpan hedefi
+    var posW8 = {};
+    for (var pw=1; pw<=48; pw++) posW8[pw]=0;
+    for (var di5=0; di5<Math.min(draws.length,8); di5++) {
+      var dN5 = allNumsArr[di5];
+      for (var pi7=0; pi7<dN5.length; pi7++) {
+        var nw = dN5[pi7];
+        if (nw>=1&&nw<=48) posW8[nw]+=(35-pi7);
+      }
+    }
+    var A6 = allNums48.slice()
+      .sort(function(a,b){ return posW8[b]-posW8[a]; })
+      .slice(0,6);
+    var A6set={}; A6.forEach(function(x){ A6set[x]=1; });
     result.certain6 = A6.slice().sort(function(a,b){return a-b;});
 
     // ── E: 3 pool13 frekans + 3 geç-sıra ±1/±2 komşu ──
