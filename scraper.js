@@ -1598,14 +1598,19 @@ function predict(draws) {
         if (nl>=1 && nl<=48) lateFreq[nl]++;
       }
     }
-    // Bu sayıların ±2 komşuları: pool13 dışı ve e_pool3 dışı
+    // Bu sayıların ±1 ve ±2 komşuları: pool13 dışı ve e_pool3 dışı
     var neighborScore = {};
     for (var nb=1; nb<=48; nb++) {
-      if (outsiderSet[nb] || e_pool3_set[nb]) continue; // pool13 veya zaten seçili
+      if (outsiderSet[nb] || e_pool3_set[nb]) continue;
       var score = 0;
       [-2,-1,1,2].forEach(function(delta){
         var src = nb + delta;
         if (src>=1 && src<=48) score += lateFreq[src];
+      });
+      // ±1 komşuya ekstra ağırlık ver (daha yakın = daha güçlü ilişki)
+      [-1,1].forEach(function(delta){
+        var src = nb + delta;
+        if (src>=1 && src<=48) score += lateFreq[src]; // ±1 için çift sayılır
       });
       if (score > 0) neighborScore[nb] = score;
     }
