@@ -1543,21 +1543,22 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // ── A: KARMA (freq×0.4 + pos×0.6) W10 — tüm48 (264 test: Net+207, MaxX 300X) ──
+    // ── A: SON 11 ÇEKİLİŞ FREKANSINA GÖRE TOP-24 HAVUZ, ORADAN KARMA TOP-6 ──
+    // Dinamik havuz: sık çıkan 24 sayı → oradan karma (freq×0.4 + pos×0.6)
+    var top24 = allNums48.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,24);
     var maxF10=1, maxP10=1;
     for (var bi=1; bi<=48; bi++) {
       if (freq10[bi]>maxF10) maxF10=freq10[bi];
       if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
     }
-    var aScore={};
-    for (var ai2=1; ai2<=48; ai2++) {
-      aScore[ai2] = 0.4*(freq10[ai2]/maxF10) + 0.6*(posScore10[ai2]/maxP10);
-    }
-    result.certain6 = allNums48.slice()
-      .sort(function(a,b){ return aScore[b]-aScore[a]; })
-      .slice(0,6).sort(function(a,b){return a-b;});
+    result.certain6 = top24.slice()
+      .sort(function(a,b){
+        var sA = 0.4*(freq10[a]/maxF10) + 0.6*(posScore10[a]/maxP10);
+        var sB = 0.4*(freq10[b]/maxF10) + 0.6*(posScore10[b]/maxP10);
+        return sB-sA;
+      }).slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── B: KARMA (freq×0.6 + pos×0.4) W10 — tüm48, A ile farklı ağırlık ──
+    // ── B: KARMA (freq×0.6 + pos×0.4) W10 tüm48 — A ile farklı ağırlık ──
     var bScore2={};
     for (var bi2=1; bi2<=48; bi2++) {
       bScore2[bi2] = 0.6*(freq10[bi2]/maxF10) + 0.4*(posScore10[bi2]/maxP10);
@@ -1566,7 +1567,7 @@ function predict(draws) {
       .sort(function(a,b){ return bScore2[b]-bScore2[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── C: yüksek streak + frekans karma — pool13 (değişmedi) ──
+    // ── C: yüksek streak + frekans karma — pool13 ──
     var pool13HighStreak = outsiders.slice()
       .sort(function(a,b){ return streakMap[b]-streakMap[a]; });
     var c_high = pool13HighStreak.slice(0,3);
@@ -1576,18 +1577,50 @@ function predict(draws) {
       .sort(function(a,b){ return freq15[b]-freq15[a]; }).slice(0,3);
     result.certain6c = c_high.concat(c_freq).sort(function(a,b){return a-b;});
 
-    // ── D: pool13 frekans W10 (Net+9, MaxX 70X) ──
+    // ── D: pool13 frekans W10 ──
     result.certain6d = outsiders.slice()
       .sort(function(a,b){ return freq10[b]-freq10[a]; })
       .slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── E: pool13 DÜŞÜK POZİSYON W10 — A ile SIFIR ÖRTÜŞME ──
-    // A tüm48'den seçiyor, E pool13'den seçiyor → farklı havuz
-    // Düşük pozisyon = geç düşen sayılar → yüksek çarpan pozisyonu
-    // 264 test: MaxX 5000X yakaladı
-    result.certain6e = outsiders.slice()
-      .sort(function(a,b){ return posScore10[a]-posScore10[b]; }) // ASC - düşük pozisyon önce
-      .slice(0,6).sort(function(a,b){return a-b;});
+    // ── E: 3 pool13 yüksek frekans + 3 geç-sıra (pos30+) sayıların ±2 komşusu ──
+    // 30+ sıradaki sayılar geç düşüyor → ±2 komşuları erken düşme eğilimli
+    // Pool13'den geldiği için A ile SIFIR örtüşme
+    var e_pool3 = outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,3);
+    var e_pool3_set = {}; e_pool3.forEach(function(x){ e_pool3_set[x]=1; });
+
+    // Son 10 turda 30+ sıraya düşen sayıların frekansı
+    var lateFreq = {};
+    for (var lf=1; lf<=48; lf++) lateFreq[lf]=0;
+    for (var di4=0; di4<Math.min(draws.length,10); di4++) {
+      var dN4 = allNumsArr[di4];
+      for (var pi6=30; pi6<dN4.length; pi6++) {
+        var nl = dN4[pi6];
+        if (nl>=1 && nl<=48) lateFreq[nl]++;
+      }
+    }
+    // Bu sayıların ±2 komşuları: pool13 dışı ve e_pool3 dışı
+    var neighborScore = {};
+    for (var nb=1; nb<=48; nb++) {
+      if (outsiderSet[nb] || e_pool3_set[nb]) continue; // pool13 veya zaten seçili
+      var score = 0;
+      [-2,-1,1,2].forEach(function(delta){
+        var src = nb + delta;
+        if (src>=1 && src<=48) score += lateFreq[src];
+      });
+      if (score > 0) neighborScore[nb] = score;
+    }
+    var e_neighbors = Object.keys(neighborScore).map(Number)
+      .sort(function(a,b){ return neighborScore[b]-neighborScore[a]; }).slice(0,3);
+
+    // 3 komşu bulunamazsa pool13'den tamamla
+    if (e_neighbors.length < 3) {
+      var e_rest = outsiders.filter(function(x){ return !e_pool3_set[x]; })
+        .sort(function(a,b){ return freq10[b]-freq10[a]; });
+      for (var ei=0; ei<e_rest.length && e_neighbors.length<3; ei++) {
+        if (e_neighbors.indexOf(e_rest[ei])===-1) e_neighbors.push(e_rest[ei]);
+      }
+    }
+    result.certain6e = e_pool3.concat(e_neighbors.slice(0,3)).sort(function(a,b){return a-b;});
   })();
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
