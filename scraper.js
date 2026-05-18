@@ -1543,52 +1543,27 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // ── A: SON 11 ÇEKİLİŞ FREKANSINA GÖRE TOP-24 HAVUZ, ORADAN KARMA TOP-6 ──
-    // Dinamik havuz: sık çıkan 24 sayı → oradan karma (freq×0.4 + pos×0.6)
-    var top24 = allNums48.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,24);
     var maxF10=1, maxP10=1;
     for (var bi=1; bi<=48; bi++) {
       if (freq10[bi]>maxF10) maxF10=freq10[bi];
       if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
     }
-    result.certain6 = top24.slice()
-      .sort(function(a,b){
-        var sA = 0.4*(freq10[a]/maxF10) + 0.6*(posScore10[a]/maxP10);
-        var sB = 0.4*(freq10[b]/maxF10) + 0.6*(posScore10[b]/maxP10);
-        return sB-sA;
-      }).slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── B: KARMA (freq×0.6 + pos×0.4) W10 tüm48 — A ile farklı ağırlık ──
-    var bScore2={};
-    for (var bi2=1; bi2<=48; bi2++) {
-      bScore2[bi2] = 0.6*(freq10[bi2]/maxF10) + 0.4*(posScore10[bi2]/maxP10);
-    }
-    result.certain6b = allNums48.slice()
-      .sort(function(a,b){ return bScore2[b]-bScore2[a]; })
-      .slice(0,6).sort(function(a,b){return a-b;});
+    // ── A: TOP-24 HAVUZ → KARMA TOP-6 ──
+    // Son 11 tur en sık çıkan 24 sayı → oradan karma (freq×0.4 + pos×0.6)
+    var top24 = allNums48.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,24);
+    var A6 = top24.slice().sort(function(a,b){
+      var sA = 0.4*(freq10[a]/maxF10) + 0.6*(posScore10[a]/maxP10);
+      var sB = 0.4*(freq10[b]/maxF10) + 0.6*(posScore10[b]/maxP10);
+      return sB-sA;
+    }).slice(0,6);
+    var A6set = {}; A6.forEach(function(x){ A6set[x]=1; });
+    result.certain6 = A6.slice().sort(function(a,b){return a-b;});
 
-    // ── C: yüksek streak + frekans karma — pool13 ──
-    var pool13HighStreak = outsiders.slice()
-      .sort(function(a,b){ return streakMap[b]-streakMap[a]; });
-    var c_high = pool13HighStreak.slice(0,3);
-    var c_high_set={};
-    c_high.forEach(function(x){ c_high_set[x]=1; });
-    var c_freq = outsiders.filter(function(x){ return !c_high_set[x]; })
-      .sort(function(a,b){ return freq15[b]-freq15[a]; }).slice(0,3);
-    result.certain6c = c_high.concat(c_freq).sort(function(a,b){return a-b;});
-
-    // ── D: pool13 frekans W10 ──
-    result.certain6d = outsiders.slice()
-      .sort(function(a,b){ return freq10[b]-freq10[a]; })
-      .slice(0,6).sort(function(a,b){return a-b;});
-
-    // ── E: 3 pool13 yüksek frekans + 3 geç-sıra (pos30+) sayıların ±2 komşusu ──
-    // 30+ sıradaki sayılar geç düşüyor → ±2 komşuları erken düşme eğilimli
-    // Pool13'den geldiği için A ile SIFIR örtüşme
+    // ── E: 3 pool13 frekans + 3 geç-sıra ±1/±2 komşu ──
+    // Pool13'den geliyor → A ile doğal sıfır örtüşme
     var e_pool3 = outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,3);
     var e_pool3_set = {}; e_pool3.forEach(function(x){ e_pool3_set[x]=1; });
-
-    // Son 10 turda 30+ sıraya düşen sayıların frekansı
     var lateFreq = {};
     for (var lf=1; lf<=48; lf++) lateFreq[lf]=0;
     for (var di4=0; di4<Math.min(draws.length,10); di4++) {
@@ -1598,34 +1573,88 @@ function predict(draws) {
         if (nl>=1 && nl<=48) lateFreq[nl]++;
       }
     }
-    // Bu sayıların ±1 ve ±2 komşuları: pool13 dışı ve e_pool3 dışı
     var neighborScore = {};
     for (var nb=1; nb<=48; nb++) {
-      if (outsiderSet[nb] || e_pool3_set[nb]) continue;
-      var score = 0;
+      if (outsiderSet[nb] || e_pool3_set[nb] || A6set[nb]) continue; // A ile örtüşme yok
+      var score2 = 0;
       [-2,-1,1,2].forEach(function(delta){
-        var src = nb + delta;
-        if (src>=1 && src<=48) score += lateFreq[src];
+        var src = nb+delta;
+        if (src>=1&&src<=48) score2+=lateFreq[src];
       });
-      // ±1 komşuya ekstra ağırlık ver (daha yakın = daha güçlü ilişki)
       [-1,1].forEach(function(delta){
-        var src = nb + delta;
-        if (src>=1 && src<=48) score += lateFreq[src]; // ±1 için çift sayılır
+        var src = nb+delta;
+        if (src>=1&&src<=48) score2+=lateFreq[src]; // ±1 çift ağırlık
       });
-      if (score > 0) neighborScore[nb] = score;
+      if (score2>0) neighborScore[nb]=score2;
     }
     var e_neighbors = Object.keys(neighborScore).map(Number)
       .sort(function(a,b){ return neighborScore[b]-neighborScore[a]; }).slice(0,3);
-
-    // 3 komşu bulunamazsa pool13'den tamamla
-    if (e_neighbors.length < 3) {
-      var e_rest = outsiders.filter(function(x){ return !e_pool3_set[x]; })
+    if (e_neighbors.length<3) {
+      var e_rest = outsiders.filter(function(x){ return !e_pool3_set[x] && !A6set[x]; })
         .sort(function(a,b){ return freq10[b]-freq10[a]; });
-      for (var ei=0; ei<e_rest.length && e_neighbors.length<3; ei++) {
+      for (var ei=0; ei<e_rest.length&&e_neighbors.length<3; ei++) {
         if (e_neighbors.indexOf(e_rest[ei])===-1) e_neighbors.push(e_rest[ei]);
       }
     }
-    result.certain6e = e_pool3.concat(e_neighbors.slice(0,3)).sort(function(a,b){return a-b;});
+    var E6 = e_pool3.concat(e_neighbors.slice(0,3));
+    var E6set = {}; E6.forEach(function(x){ E6set[x]=1; });
+    result.certain6e = E6.slice().sort(function(a,b){return a-b;});
+
+    // ── B: KARMA (freq×0.6 + pos×0.4) — A ve E dışı sayılardan ──
+    var bSorted = allNums48.slice()
+      .filter(function(x){ return !A6set[x] && !E6set[x]; })
+      .sort(function(a,b){
+        var sA = 0.6*(freq10[a]/maxF10)+0.4*(posScore10[a]/maxP10);
+        var sB = 0.6*(freq10[b]/maxF10)+0.4*(posScore10[b]/maxP10);
+        return sB-sA;
+      });
+    var B6 = bSorted.slice(0,6);
+    var B6set = {}; B6.forEach(function(x){ B6set[x]=1; });
+    result.certain6b = B6.slice().sort(function(a,b){return a-b;});
+
+    // ── C: yüksek streak + frekans — pool13, B ile max 2 ortak ──
+    var pool13HighStreak = outsiders.slice().sort(function(a,b){ return streakMap[b]-streakMap[a]; });
+    var c_high = pool13HighStreak.slice(0,3);
+    var c_high_set={}; c_high.forEach(function(x){ c_high_set[x]=1; });
+    var c_freq = outsiders.filter(function(x){ return !c_high_set[x]; })
+      .sort(function(a,b){ return freq15[b]-freq15[a]; }).slice(0,3);
+    var C6raw = c_high.concat(c_freq);
+    // B ile max 2 ortak kontrol
+    var C6 = []; var c_shared = 0;
+    C6raw.forEach(function(x){
+      if (B6set[x]) { if (c_shared<2) { C6.push(x); c_shared++; } }
+      else { C6.push(x); }
+    });
+    // 6'ya tamamla
+    if (C6.length<6) {
+      outsiders.forEach(function(x){
+        if (C6.length>=6) return;
+        if (C6.indexOf(x)===-1 && !A6set[x] && !E6set[x]) C6.push(x);
+      });
+    }
+    var C6set = {}; C6.forEach(function(x){ C6set[x]=1; });
+    result.certain6c = C6.slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── D: pool13 frekans W10 — B ve C ile max 2 ortak ──
+    var D6raw = outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; });
+    var D6 = []; var d_shared_b=0; var d_shared_c=0;
+    D6raw.forEach(function(x){
+      if (D6.length>=6) return;
+      var sharedWithB = B6set[x] ? 1 : 0;
+      var sharedWithC = C6set[x] ? 1 : 0;
+      // B ile toplam shared ≤2, C ile toplam shared ≤2
+      if (d_shared_b+sharedWithB<=2 && d_shared_c+sharedWithC<=2 && !A6set[x] && !E6set[x]) {
+        D6.push(x); d_shared_b+=sharedWithB; d_shared_c+=sharedWithC;
+      }
+    });
+    // 6'ya tamamla
+    if (D6.length<6) {
+      outsiders.forEach(function(x){
+        if (D6.length>=6) return;
+        if (D6.indexOf(x)===-1 && !A6set[x] && !E6set[x]) D6.push(x);
+      });
+    }
+    result.certain6d = D6.slice(0,6).sort(function(a,b){return a-b;});
   })();
 
   // ── JACKPOT TAHMİNİ (15. 19. 23. 27. 35. pozisyonlar) ──
