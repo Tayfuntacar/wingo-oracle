@@ -1498,7 +1498,7 @@ function predict(draws) {
     prevAll.forEach(function(x){ prevSet[x]=1; });
     var outsiders = [];
     for (var x=1; x<=48; x++) { if (!prevSet[x]) outsiders.push(x); }
-    if (outsiders.length !== 13) return;
+    console.log('DEBUG draws:', draws.length, 'allNumsArr[0]:', allNumsArr[0] ? allNumsArr[0].slice(0,5) : 'BOŞ', 'outsiders:', outsiders.length);
 
     // Frekans ve pozisyon skorları
     var freq10 = {}, freq15 = {}, posScore15 = {}, posScore10 = {};
