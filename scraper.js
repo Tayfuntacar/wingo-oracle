@@ -1549,6 +1549,137 @@ function predict(draws) {
       if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
     }
 
+    // ── A: 3 pool13 pozisyon W10 + 3 tüm48 pozisyon W10 (643 test: Net+488, MaxX 500X) ──
+    var a_pool = outsiders.slice().sort(function(a,b){ return posScore10[b]-posScore10[a]; }).slice(0,3);
+    var a_pool_set={}; a_pool.forEach(function(x){ a_pool_set[x]=1; });
+    var a_all = allNums48.filter(function(n){ return !outsiderSet[n]&&!a_pool_set[n]; })
+      .sort(function(a,b){ return posScore10[b]-posScore10[a]; }).slice(0,3);
+    var A6 = a_pool.concat(a_all);
+    var A6set={}; A6.forEach(function(x){ A6set[x]=1; });
+    result.certain6 = A6.slice().sort(function(a,b){return a-b;});
+
+    // ── B: 3 pool13 pozisyon W8 + 3 tüm48 pozisyon W8 (A dışı) ──
+    var posW8={}; var maxPW8=1;
+    for (var pw8=1; pw8<=48; pw8++) posW8[pw8]=0;
+    for (var diB=0; diB<Math.min(draws.length,8); diB++) {
+      var dNB=allNumsArr[diB];
+      for (var piB=0; piB<dNB.length; piB++) {
+        var nB=dNB[piB];
+        if (nB>=1&&nB<=48) { posW8[nB]+=(35-piB); if(posW8[nB]>maxPW8) maxPW8=posW8[nB]; }
+      }
+    }
+    var b_pool=outsiders.filter(function(x){return !A6set[x];}).sort(function(a,b){return posW8[b]-posW8[a];}).slice(0,3);
+    var b_pool_set={}; b_pool.forEach(function(x){ b_pool_set[x]=1; });
+    var b_all=allNums48.filter(function(n){return !outsiderSet[n]&&!A6set[n]&&!b_pool_set[n];}).sort(function(a,b){return posW8[b]-posW8[a];}).slice(0,3);
+    var B6=b_pool.concat(b_all);
+    var B6set={}; B6.forEach(function(x){ B6set[x]=1; });
+    result.certain6b = B6.slice().sort(function(a,b){return a-b;});
+
+    // ── C: yüksek streak + frekans W15 — pool13 (A/B dışı) ──
+    var pool13HighStreak=outsiders.slice().sort(function(a,b){return streakMap[b]-streakMap[a];});
+    var c_high=[];
+    pool13HighStreak.forEach(function(x){ if(c_high.length<3&&!A6set[x]&&!B6set[x]) c_high.push(x); });
+    var c_high_set={}; c_high.forEach(function(x){ c_high_set[x]=1; });
+    var c_freq=[];
+    outsiders.filter(function(x){return !c_high_set[x]&&!A6set[x]&&!B6set[x];})
+      .sort(function(a,b){return freq15[b]-freq15[a];})
+      .forEach(function(x){ if(c_freq.length<3) c_freq.push(x); });
+    var C6=c_high.concat(c_freq);
+    if(C6.length<6) outsiders.forEach(function(x){ if(C6.length<6&&C6.indexOf(x)===-1) C6.push(x); });
+    var C6set={}; C6.forEach(function(x){ C6set[x]=1; });
+    result.certain6c = C6.slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── D: pool13 frekans W10 (A/B/C dışı) ──
+    var D6=[];
+    outsiders.slice().sort(function(a,b){return freq10[b]-freq10[a];})
+      .forEach(function(x){ if(D6.length<6&&!A6set[x]&&!B6set[x]&&!C6set[x]) D6.push(x); });
+    if(D6.length<6) outsiders.forEach(function(x){ if(D6.length<6&&D6.indexOf(x)===-1) D6.push(x); });
+    var D6set={}; D6.forEach(function(x){ D6set[x]=1; });
+    result.certain6d = D6.slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── E: 3 pool13 düşük pos W15 + 3 geç-sıra ±1/±2 komşu (tüm öncekiler dışı) ──
+    var posW15e={}; for(var pw15e=1;pw15e<=48;pw15e++) posW15e[pw15e]=0;
+    for(var diE=0;diE<Math.min(draws.length,15);diE++){
+      var dNE=allNumsArr[diE];
+      for(var piE=0;piE<dNE.length;piE++){ var nE=dNE[piE]; if(nE>=1&&nE<=48) posW15e[nE]+=(35-piE); }
+    }
+    var lateFreq={};
+    for(var lf=1;lf<=48;lf++) lateFreq[lf]=0;
+    for(var diL=0;diL<Math.min(draws.length,10);diL++){
+      var dNL=allNumsArr[diL];
+      for(var piL=30;piL<dNL.length;piL++){ var nl=dNL[piL]; if(nl>=1&&nl<=48) lateFreq[nl]++; }
+    }
+    var e_pool=[];
+    outsiders.slice().sort(function(a,b){return posW15e[a]-posW15e[b];})
+      .forEach(function(x){ if(e_pool.length<3&&!A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x]) e_pool.push(x); });
+    var e_pool_set={}; e_pool.forEach(function(x){ e_pool_set[x]=1; });
+    var nbScore={};
+    for(var nb2=1;nb2<=48;nb2++){
+      if(A6set[nb2]||B6set[nb2]||C6set[nb2]||D6set[nb2]||e_pool_set[nb2]||outsiderSet[nb2]) continue;
+      var sc2=0;
+      [-2,-1,1,2].forEach(function(d){ var s=nb2+d; if(s>=1&&s<=48) sc2+=lateFreq[s]; });
+      [-1,1].forEach(function(d){ var s=nb2+d; if(s>=1&&s<=48) sc2+=lateFreq[s]; });
+      if(sc2>0) nbScore[nb2]=sc2;
+    }
+    var e_nb=Object.keys(nbScore).map(Number).sort(function(a,b){return nbScore[b]-nbScore[a];}).slice(0,3);
+    if(e_nb.length<3){
+      outsiders.filter(function(x){return !e_pool_set[x]&&!A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x];})
+        .sort(function(a,b){return freq10[b]-freq10[a];})
+        .forEach(function(x){ if(e_nb.length<3) e_nb.push(x); });
+    }
+    result.certain6e = e_pool.concat(e_nb.slice(0,3)).sort(function(a,b){return a-b;});
+
+        console.log('DEBUG draws:', draws.length, 'allNumsArr[0]:', allNumsArr[0] ? allNumsArr[0].slice(0,5) : 'BOŞ', 'outsiders:', outsiders.length);
+
+    // Frekans ve pozisyon skorları
+    var freq10 = {}, freq15 = {}, posScore15 = {}, posScore10 = {};
+    for (var pi=1; pi<=48; pi++) { freq10[pi]=0; freq15[pi]=0; posScore15[pi]=0; posScore10[pi]=0; }
+    var useLen = Math.min(draws.length, 15);
+    for (var di=0; di<useLen; di++) {
+      var dNums = allNumsArr[di];
+      for (var pi2=0; pi2<dNums.length; pi2++) {
+        var num = dNums[pi2];
+        if (num<1||num>48) continue;
+        freq15[num]++;
+        posScore15[num] += (35-pi2);
+        if (di<10) { freq10[num]++; posScore10[num] += (35-pi2); }
+      }
+    }
+
+    // W=20 frekans için ayrı hesap
+    var freq20 = {};
+    for (var fi=1; fi<=48; fi++) freq20[fi]=0;
+    var useLen20 = Math.min(draws.length, 20);
+    for (var di2=0; di2<useLen20; di2++) {
+      var dNums2 = allNumsArr[di2];
+      for (var pi3=0; pi3<dNums2.length; pi3++) {
+        var num2 = dNums2[pi3];
+        if (num2<1||num2>48) continue;
+        freq20[num2]++;
+      }
+    }
+
+    // Streak: her outsider için kaç turdur dışarıda
+    var streakMap = {};
+    outsiders.forEach(function(num) {
+      var s=0;
+      for (var si=0; si<Math.min(draws.length,12); si++) {
+        if (allNumsArr[si].indexOf(num)===-1) { s++; } else { break; }
+      }
+      streakMap[num]=s;
+    });
+
+    var allNums48=[];
+    for (var ai=1; ai<=48; ai++) allNums48.push(ai);
+    var outsiderSet={};
+    outsiders.forEach(function(x){ outsiderSet[x]=1; });
+
+    var maxF10=1, maxP10=1;
+    for (var bi=1; bi<=48; bi++) {
+      if (freq10[bi]>maxF10) maxF10=freq10[bi];
+      if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
+    }
+
     // ── A: W8 POZİSYON SKORU TÜM 48 (45 test: Net+39, MaxX yüksek) ──
     // Son 8 turda en erken pozisyona düşen sayılar → yüksek çarpan hedefi
     var posW8 = {};
