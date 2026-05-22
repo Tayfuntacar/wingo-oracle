@@ -1543,91 +1543,110 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    var maxF10=1, maxP10=1;
-    for (var bi=1; bi<=48; bi++) {
-      if (freq10[bi]>maxF10) maxF10=freq10[bi];
-      if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
-    }
+    // ── SİSTEM AÇIĞI BAZLI SKORLAR ──
+    // 2651 çekiliş analizi:
+    // "Hızlı dönen" sayılar: 30,35,5,41,18,16,22,26 → pool13'deyken erken düşüyor
+    // "Ağır" sayılar: 3,15,17,1,7,11,48,6 → pool13'deyken son sıralara gidiyor
+    // Renk geçiş: Turuncu→Mavi(%113), Yeşil→Siyah(%109), Sarı→Kahve(%110)
+    var FAST_RETURN = {30:3,35:3,5:3,41:3,18:2,16:2,22:2,26:2,4:1,8:1,12:1,20:1,24:1,28:1,32:1,36:1,40:1,44:1};
+    var SLOW_RETURN = {3:3,15:3,17:3,1:2,7:2,11:2,48:2,6:1,9:1,13:1,19:1,23:1,27:1,31:1,39:1,47:1};
 
-    // ── A: 3 pool13 pozisyon W10 + 3 tüm48 pozisyon W10 (643 test: Net+488, MaxX 500X) ──
-    var a_pool = outsiders.slice().sort(function(a,b){ return posScore10[b]-posScore10[a]; }).slice(0,3);
-    var a_pool_set={}; a_pool.forEach(function(x){ a_pool_set[x]=1; });
-    var a_all = allNums48.filter(function(n){ return !outsiderSet[n]&&!a_pool_set[n]; })
-      .sort(function(a,b){ return posScore10[b]-posScore10[a]; }).slice(0,3);
-    var A6 = a_pool.concat(a_all);
-    var A6set={}; A6.forEach(function(x){ A6set[x]=1; });
-    result.certain6 = A6.slice().sort(function(a,b){return a-b;});
+    // Renk geçiş bonusu: önceki turda X rengi geldiyse bu turda Y rengi erken düşer
+    var COLOR_BONUS = {
+      'Turuncu': {3:2,11:2,19:2,27:2,35:2,43:2}, // Mavi+2
+      'Yesil':   {7:2,15:2,23:2,31:2,39:2,47:2}, // Siyah+2
+      'Sari':    {5:2,13:2,21:2,29:2,37:2,45:2}, // Kahve+2
+      'Mor':     {8:2,16:2,24:2,32:2,40:2,48:2}, // Mor+2
+      'Mavi':    {7:2,15:2,23:2,31:2,39:2,47:2}, // Siyah+2
+      'Kirmizi': {5:2,13:2,21:2,29:2,37:2,45:2}, // Kahve+2
+      'Kahve':   {1:2,9:2,17:2,25:2,33:2,41:2},  // Sari+2
+      'Siyah':   {2:2,10:2,18:2,26:2,34:2,42:2}  // Yesil+2
+    };
 
-    // ── B: 3 pool13 pozisyon W8 + 3 tüm48 pozisyon W8 (A dışı) ──
-    var posW8={}; var maxPW8=1;
-    for (var pw8=1; pw8<=48; pw8++) posW8[pw8]=0;
-    for (var diB=0; diB<Math.min(draws.length,8); diB++) {
-      var dNB=allNumsArr[diB];
-      for (var piB=0; piB<dNB.length; piB++) {
-        var nB=dNB[piB];
-        if (nB>=1&&nB<=48) { posW8[nB]+=(35-piB); if(posW8[nB]>maxPW8) maxPW8=posW8[nB]; }
+    // Önceki turun rengi
+    var prevColor = draws[0] ? draws[0].color : '';
+    var colorBonus = (prevColor && COLOR_BONUS[prevColor]) ? COLOR_BONUS[prevColor] : {};
+
+    // Her sayı için sistem skoru hesapla
+    function sysScore(n, inPool13) {
+      var score = 0;
+      if (inPool13) {
+        score += (FAST_RETURN[n] || 0) * 3;   // hızlı dönücü pool13 sayısı → yüksek bonus
+        score -= (SLOW_RETURN[n] || 0) * 2;   // ağır pool13 sayısı → ceza
       }
+      score += (colorBonus[n] || 0) * 2;      // renk geçiş bonusu
+      // Frekans desteği
+      score += freq10[n] * 0.3;
+      score += posScore10[n] / 35.0 * 0.2;
+      return score;
     }
-    var b_pool=outsiders.filter(function(x){return !A6set[x];}).sort(function(a,b){return posW8[b]-posW8[a];}).slice(0,3);
-    var b_pool_set={}; b_pool.forEach(function(x){ b_pool_set[x]=1; });
-    var b_all=allNums48.filter(function(n){return !outsiderSet[n]&&!A6set[n]&&!b_pool_set[n];}).sort(function(a,b){return posW8[b]-posW8[a];}).slice(0,3);
-    var B6=b_pool.concat(b_all);
-    var B6set={}; B6.forEach(function(x){ B6set[x]=1; });
-    result.certain6b = B6.slice().sort(function(a,b){return a-b;});
 
-    // ── C: yüksek streak + frekans W15 — pool13 (A/B dışı) ──
-    var pool13HighStreak=outsiders.slice().sort(function(a,b){return streakMap[b]-streakMap[a];});
-    var c_high=[];
-    pool13HighStreak.forEach(function(x){ if(c_high.length<3&&!A6set[x]&&!B6set[x]) c_high.push(x); });
-    var c_high_set={}; c_high.forEach(function(x){ c_high_set[x]=1; });
-    var c_freq=[];
-    outsiders.filter(function(x){return !c_high_set[x]&&!A6set[x]&&!B6set[x];})
-      .sort(function(a,b){return freq15[b]-freq15[a];})
-      .forEach(function(x){ if(c_freq.length<3) c_freq.push(x); });
-    var C6=c_high.concat(c_freq);
-    if(C6.length<6) outsiders.forEach(function(x){ if(C6.length<6&&C6.indexOf(x)===-1) C6.push(x); });
-    var C6set={}; C6.forEach(function(x){ C6set[x]=1; });
+    // ── A: Pool13'deki HIZLI DÖNEN sayılar öncelikli, sonra tüm48 ──
+    var a_fast = outsiders.filter(function(x){ return (FAST_RETURN[x]||0) >= 2; })
+      .sort(function(a,b){ return sysScore(b,true)-sysScore(a,true); });
+    var A6 = a_fast.slice(0, Math.min(3, a_fast.length));
+    var A6set={}; A6.forEach(function(x){ A6set[x]=1; });
+    // Kalan yerler: tüm48'den yüksek sistem skoru
+    allNums48.filter(function(n){ return !A6set[n]&&!outsiderSet[n]; })
+      .sort(function(a,b){ return sysScore(b,false)-sysScore(a,false); })
+      .forEach(function(n){ if(A6.length<6) { A6.push(n); A6set[n]=1; } });
+    // Hala eksikse pool13'den tamamla
+    outsiders.sort(function(a,b){ return sysScore(b,true)-sysScore(a,true); })
+      .forEach(function(n){ if(A6.length<6&&!A6set[n]) { A6.push(n); A6set[n]=1; } });
+    result.certain6 = A6.slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── B: Renk geçiş bonuslu sayılar + pool13 hızlı dönenler (A dışı) ──
+    var B6=[]; var B6set={};
+    // Önce renk bonusu yüksek olanlar
+    allNums48.filter(function(n){ return !A6set[n]&&(colorBonus[n]||0)>=2; })
+      .sort(function(a,b){ return sysScore(b,outsiderSet[b])-sysScore(a,outsiderSet[a]); })
+      .forEach(function(n){ if(B6.length<3) { B6.push(n); B6set[n]=1; } });
+    // Kalan: pool13 hızlı dönenler
+    outsiders.filter(function(x){ return !A6set[x]&&!B6set[x]&&(FAST_RETURN[x]||0)>=1; })
+      .sort(function(a,b){ return sysScore(b,true)-sysScore(a,true); })
+      .forEach(function(n){ if(B6.length<6) { B6.push(n); B6set[n]=1; } });
+    // Tamamla
+    allNums48.filter(function(n){ return !A6set[n]&&!B6set[n]; })
+      .sort(function(a,b){ return sysScore(b,outsiderSet[b])-sysScore(a,outsiderSet[a]); })
+      .forEach(function(n){ if(B6.length<6) { B6.push(n); B6set[n]=1; } });
+    result.certain6b = B6.slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── C: Pool13'den AĞIR sayıları çıkar, kalan pool13'den yüksek frekans (A/B dışı) ──
+    var C6=[]; var C6set={};
+    outsiders.filter(function(x){ return !A6set[x]&&!B6set[x]&&(SLOW_RETURN[x]||0)<2; })
+      .sort(function(a,b){ return freq15[b]-freq15[a]; })
+      .forEach(function(n){ if(C6.length<6) { C6.push(n); C6set[n]=1; } });
+    if(C6.length<6) outsiders.forEach(function(x){ if(C6.length<6&&!C6set[x]) { C6.push(x); C6set[x]=1; } });
     result.certain6c = C6.slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── D: pool13 frekans W10 (A/B/C dışı) ──
-    var D6=[];
-    outsiders.slice().sort(function(a,b){return freq10[b]-freq10[a];})
-      .forEach(function(x){ if(D6.length<6&&!A6set[x]&&!B6set[x]&&!C6set[x]) D6.push(x); });
-    if(D6.length<6) outsiders.forEach(function(x){ if(D6.length<6&&D6.indexOf(x)===-1) D6.push(x); });
-    var D6set={}; D6.forEach(function(x){ D6set[x]=1; });
+    // ── D: Pool13 frekans W10 (A/B/C dışı) ──
+    var D6=[]; var D6set={};
+    outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; })
+      .forEach(function(x){ if(D6.length<6&&!A6set[x]&&!B6set[x]&&!C6set[x]) { D6.push(x); D6set[x]=1; } });
+    if(D6.length<6) outsiders.forEach(function(x){ if(D6.length<6&&!D6set[x]) { D6.push(x); D6set[x]=1; } });
     result.certain6d = D6.slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── E: 3 pool13 düşük pos W15 + 3 geç-sıra ±1/±2 komşu (tüm öncekiler dışı) ──
-    var posW15e={}; for(var pw15e=1;pw15e<=48;pw15e++) posW15e[pw15e]=0;
-    for(var diE=0;diE<Math.min(draws.length,15);diE++){
-      var dNE=allNumsArr[diE];
-      for(var piE=0;piE<dNE.length;piE++){ var nE=dNE[piE]; if(nE>=1&&nE<=48) posW15e[nE]+=(35-piE); }
-    }
-    var lateFreq={};
-    for(var lf=1;lf<=48;lf++) lateFreq[lf]=0;
+    // ── E: Pool13 AĞIR sayılar (son sıraya gider ama 3 tur bekleyince döner) + komşu ──
+    var E6=[]; var E6set={};
+    outsiders.filter(function(x){ return !A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x]&&(SLOW_RETURN[x]||0)>=2; })
+      .sort(function(a,b){ return streakMap[b]-streakMap[a]; })
+      .forEach(function(n){ if(E6.length<3) { E6.push(n); E6set[n]=1; } });
+    var lateFreq={}; for(var lf=1;lf<=48;lf++) lateFreq[lf]=0;
     for(var diL=0;diL<Math.min(draws.length,10);diL++){
       var dNL=allNumsArr[diL];
       for(var piL=30;piL<dNL.length;piL++){ var nl=dNL[piL]; if(nl>=1&&nl<=48) lateFreq[nl]++; }
     }
-    var e_pool=[];
-    outsiders.slice().sort(function(a,b){return posW15e[a]-posW15e[b];})
-      .forEach(function(x){ if(e_pool.length<3&&!A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x]) e_pool.push(x); });
-    var e_pool_set={}; e_pool.forEach(function(x){ e_pool_set[x]=1; });
-    var nbScore={};
-    for(var nb2=1;nb2<=48;nb2++){
-      if(A6set[nb2]||B6set[nb2]||C6set[nb2]||D6set[nb2]||e_pool_set[nb2]||outsiderSet[nb2]) continue;
+    var nbScore={}; for(var nb2=1;nb2<=48;nb2++){
+      if(A6set[nb2]||B6set[nb2]||C6set[nb2]||D6set[nb2]||E6set[nb2]||outsiderSet[nb2]) continue;
       var sc2=0;
       [-2,-1,1,2].forEach(function(d){ var s=nb2+d; if(s>=1&&s<=48) sc2+=lateFreq[s]; });
       [-1,1].forEach(function(d){ var s=nb2+d; if(s>=1&&s<=48) sc2+=lateFreq[s]; });
       if(sc2>0) nbScore[nb2]=sc2;
     }
-    var e_nb=Object.keys(nbScore).map(Number).sort(function(a,b){return nbScore[b]-nbScore[a];}).slice(0,3);
-    if(e_nb.length<3){
-      outsiders.filter(function(x){return !e_pool_set[x]&&!A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x];})
-        .sort(function(a,b){return freq10[b]-freq10[a];})
-        .forEach(function(x){ if(e_nb.length<3) e_nb.push(x); });
-    }
-    result.certain6e = e_pool.concat(e_nb.slice(0,3)).sort(function(a,b){return a-b;});
+    Object.keys(nbScore).map(Number).sort(function(a,b){ return nbScore[b]-nbScore[a]; })
+      .forEach(function(n){ if(E6.length<6) { E6.push(n); E6set[n]=1; } });
+    if(E6.length<6) outsiders.forEach(function(x){ if(E6.length<6&&!E6set[x]) { E6.push(x); E6set[x]=1; } });
+    result.certain6e = E6.slice(0,6).sort(function(a,b){return a-b;});
 
         console.log('DEBUG draws:', draws.length, 'allNumsArr[0]:', allNumsArr[0] ? allNumsArr[0].slice(0,5) : 'BOŞ', 'outsiders:', outsiders.length);
 
