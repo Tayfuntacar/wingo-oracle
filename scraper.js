@@ -1543,7 +1543,64 @@ function predict(draws) {
     var outsiderSet={};
     outsiders.forEach(function(x){ outsiderSet[x]=1; });
 
-    // ── SİSTEM AÇIĞI BAZLI SKORLAR ──
+    var maxF8=1, maxP8=1, maxF10=1, maxP10=1;
+    var freq8={}; for(var f8i=1;f8i<=48;f8i++) freq8[f8i]=0;
+    var posW8={}; for(var p8i=1;p8i<=48;p8i++) posW8[p8i]=0;
+    for(var di8=0;di8<Math.min(draws.length,10);di8++){
+      var dN8=allNumsArr[di8];
+      for(var pi8=0;pi8<dN8.length;pi8++){
+        var n8=dN8[pi8]; if(n8<1||n8>48) continue;
+        if(di8<8){ freq8[n8]++; posW8[n8]+=(35-pi8); }
+        if(n8>maxF8) maxF8=freq8[n8];
+        if(posW8[n8]>maxP8) maxP8=posW8[n8];
+      }
+    }
+    for(var bi=1;bi<=48;bi++){
+      if(freq10[bi]>maxF10) maxF10=freq10[bi];
+      if(posScore10[bi]>maxP10) maxP10=posScore10[bi];
+    }
+
+    // ── A: W8 FREKANS TÜM 48 (1188 test: Net+1498, MaxX 1000X) ──
+    var A6=allNums48.slice().sort(function(a,b){return freq8[b]-freq8[a];}).slice(0,6);
+    var A6set={}; A6.forEach(function(x){A6set[x]=1;});
+    result.certain6 = A6.slice().sort(function(a,b){return a-b;});
+
+    // ── B: W8 KARMA freq×0.3+pos×0.7 TÜM 48 (Net+341, MaxX 300X) ──
+    var B6=allNums48.filter(function(n){return !A6set[n];})
+      .sort(function(a,b){
+        var sA=0.3*(freq8[a]/maxF8)+0.7*(posW8[a]/maxP8);
+        var sB=0.3*(freq8[b]/maxF8)+0.7*(posW8[b]/maxP8);
+        return sB-sA;
+      }).slice(0,6);
+    var B6set={}; B6.forEach(function(x){B6set[x]=1;});
+    result.certain6b = B6.slice().sort(function(a,b){return a-b;});
+
+    // ── C: W10 KARMA freq×0.5+pos×0.5 TÜM 48 (Net+313) A/B dışı ──
+    var C6=allNums48.filter(function(n){return !A6set[n]&&!B6set[n];})
+      .sort(function(a,b){
+        var sA=0.5*(freq10[a]/maxF10)+0.5*(posScore10[a]/maxP10);
+        var sB=0.5*(freq10[b]/maxF10)+0.5*(posScore10[b]/maxP10);
+        return sB-sA;
+      }).slice(0,6);
+    var C6set={}; C6.forEach(function(x){C6set[x]=1;});
+    result.certain6c = C6.slice().sort(function(a,b){return a-b;});
+
+    // ── D: POOL13 W10 FREKANS (A/B/C dışı, havuz odaklı) ──
+    var D6=[]; var D6set={};
+    outsiders.slice().sort(function(a,b){return freq10[b]-freq10[a];})
+      .forEach(function(x){if(D6.length<6&&!A6set[x]&&!B6set[x]&&!C6set[x]){D6.push(x);D6set[x]=1;}});
+    if(D6.length<6) outsiders.forEach(function(x){if(D6.length<6&&!D6set[x]){D6.push(x);D6set[x]=1;}});
+    result.certain6d = D6.slice(0,6).sort(function(a,b){return a-b;});
+
+    // ── E: POOL13 yüksek STREAK + W15 frekans (A/B/C/D dışı) ──
+    var pool13HS=outsiders.slice().sort(function(a,b){return streakMap[b]-streakMap[a];});
+    var E6=[]; var E6set={};
+    pool13HS.forEach(function(x){if(E6.length<3&&!A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x]){E6.push(x);E6set[x]=1;}});
+    outsiders.filter(function(x){return !E6set[x]&&!A6set[x]&&!B6set[x]&&!C6set[x]&&!D6set[x];})
+      .sort(function(a,b){return freq15[b]-freq15[a];})
+      .forEach(function(x){if(E6.length<6){E6.push(x);E6set[x]=1;}});
+    if(E6.length<6) outsiders.forEach(function(x){if(E6.length<6&&!E6set[x]){E6.push(x);E6set[x]=1;}});
+    result.certain6e = E6.slice(0,6).sort(function(a,b){return a-b;});
     // 2651 çekiliş analizi:
     // "Hızlı dönen" sayılar: 30,35,5,41,18,16,22,26 → pool13'deyken erken düşüyor
     // "Ağır" sayılar: 3,15,17,1,7,11,48,6 → pool13'deyken son sıralara gidiyor
