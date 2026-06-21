@@ -1780,43 +1780,16 @@ function predict(draws) {
     var A6set={}; A6.forEach(function(x){ A6set[x]=1; });
     result.certain6 = A6.slice().sort(function(a,b){return a-b;});
 
-    // ── E: 3 pool13 frekans + 3 geç-sıra ±1/±2 komşu ──
-    // Pool13'den geliyor → A ile doğal sıfır örtüşme
-    var e_pool3 = outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; }).slice(0,3);
-    var e_pool3_set = {}; e_pool3.forEach(function(x){ e_pool3_set[x]=1; });
-    var lateFreq = {};
-    for (var lf=1; lf<=48; lf++) lateFreq[lf]=0;
-    for (var di4=0; di4<Math.min(draws.length,10); di4++) {
-      var dN4 = allNumsArr[di4];
-      for (var pi6=30; pi6<dN4.length; pi6++) {
-        var nl = dN4[pi6];
-        if (nl>=1 && nl<=48) lateFreq[nl]++;
-      }
-    }
-    var neighborScore = {};
-    for (var nb=1; nb<=48; nb++) {
-      if (outsiderSet[nb] || e_pool3_set[nb] || A6set[nb]) continue; // A ile örtüşme yok
-      var score2 = 0;
-      [-2,-1,1,2].forEach(function(delta){
-        var src = nb+delta;
-        if (src>=1&&src<=48) score2+=lateFreq[src];
-      });
-      [-1,1].forEach(function(delta){
-        var src = nb+delta;
-        if (src>=1&&src<=48) score2+=lateFreq[src]; // ±1 çift ağırlık
-      });
-      if (score2>0) neighborScore[nb]=score2;
-    }
-    var e_neighbors = Object.keys(neighborScore).map(Number)
-      .sort(function(a,b){ return neighborScore[b]-neighborScore[a]; }).slice(0,3);
-    if (e_neighbors.length<3) {
-      var e_rest = outsiders.filter(function(x){ return !e_pool3_set[x] && !A6set[x]; })
-        .sort(function(a,b){ return freq10[b]-freq10[a]; });
-      for (var ei=0; ei<e_rest.length&&e_neighbors.length<3; ei++) {
-        if (e_neighbors.indexOf(e_rest[ei])===-1) e_neighbors.push(e_rest[ei]);
-      }
-    }
-    var E6 = e_pool3.concat(e_neighbors.slice(0,3));
+    // ── E: OUTSIDER 13 HAVUZU "LEAST DRAWN" (Wingo istatistik mantığı) ──
+    // Son 10 round'da outsider havuzundaki 13 sayının HER BİRİNİN dışarıda kalma
+    // istatistiği: en az geri dönen (en soğuk) 6 sayı = en yüksek "geri dönme potansiyeli"
+    var outsiderFreqW10 = {}; // outsider sayı -> son 10 round'da KAÇ KEZ GERİ DÖNDÜĞÜ (35 listede çıktı)
+    outsiders.forEach(function(x){ outsiderFreqW10[x] = freqW10[x] || 0; });
+    var E6 = outsiders.slice().sort(function(a,b){
+      // En az geri dönen önce (Wingo "Least drawn" mantığı, outsider havuzu içinde)
+      if (outsiderFreqW10[a] !== outsiderFreqW10[b]) return outsiderFreqW10[a]-outsiderFreqW10[b];
+      return streakMap[b]-streakMap[a]; // esitlikte daha uzun süredir dışarda olan öne
+    }).slice(0,6);
     var E6set = {}; E6.forEach(function(x){ E6set[x]=1; });
     result.certain6e = E6.slice().sort(function(a,b){return a-b;});
 
@@ -1855,23 +1828,23 @@ function predict(draws) {
     var C6set = {}; C6.forEach(function(x){ C6set[x]=1; });
     result.certain6c = C6.slice(0,6).sort(function(a,b){return a-b;});
 
-    // ── D: pool13 frekans W10 — B ve C ile max 2 ortak ──
-    var D6raw = outsiders.slice().sort(function(a,b){ return freq10[b]-freq10[a]; });
-    var D6 = []; var d_shared_b=0; var d_shared_c=0;
+    // ── D: OUTSIDER 13 HAVUZU "MOST DRAWN" (Wingo istatistik mantığı) ──
+    // Son 10 round'da outsider havuzundaki 13 sayının HER BİRİNİN dışarıda kalma
+    // istatistiği: en çok geri dönen (en sıcak) 6 sayı — A ve E ile çakışmasın
+    var D6raw = outsiders.slice().sort(function(a,b){
+      if (outsiderFreqW10[b] !== outsiderFreqW10[a]) return outsiderFreqW10[b]-outsiderFreqW10[a];
+      return lastSeenIdx[a]-lastSeenIdx[b];
+    });
+    var D6 = [];
     D6raw.forEach(function(x){
       if (D6.length>=6) return;
-      var sharedWithB = B6set[x] ? 1 : 0;
-      var sharedWithC = C6set[x] ? 1 : 0;
-      // B ile toplam shared ≤2, C ile toplam shared ≤2
-      if (d_shared_b+sharedWithB<=2 && d_shared_c+sharedWithC<=2 && !A6set[x] && !E6set[x]) {
-        D6.push(x); d_shared_b+=sharedWithB; d_shared_c+=sharedWithC;
-      }
+      if (!A6set[x] && !E6set[x]) D6.push(x);
     });
-    // 6'ya tamamla
+    // 6'ya tamamla (A/E disi outsider tukenirse, A/E ile cakisarak doldur)
     if (D6.length<6) {
-      outsiders.forEach(function(x){
+      D6raw.forEach(function(x){
         if (D6.length>=6) return;
-        if (D6.indexOf(x)===-1 && !A6set[x] && !E6set[x]) D6.push(x);
+        if (D6.indexOf(x)===-1) D6.push(x);
       });
     }
     result.certain6d = D6.slice(0,6).sort(function(a,b){return a-b;});
