@@ -1756,20 +1756,27 @@ function predict(draws) {
       if (posScore10[bi]>maxP10) maxP10=posScore10[bi];
     }
 
-    // ── A: W8 POZİSYON SKORU TÜM 48 (45 test: Net+39, MaxX yüksek) ──
-    // Son 8 turda en erken pozisyona düşen sayılar → yüksek çarpan hedefi
-    var posW8 = {};
-    for (var pw=1; pw<=48; pw++) posW8[pw]=0;
-    for (var di5=0; di5<Math.min(draws.length,8); di5++) {
+    // ── A: WINGO RESMİ İSTATİSTİK MANTIĞI (Son 10 round "Most drawn number") ──
+    // Wingo'nun kendi istatistik sayfasındaki "MOST drawn number" hesabıyla aynı:
+    // son 10 round'un 35 sayılık dizilerinde her sayının kaç kez çıktığını say,
+    // en çok çıkan 6 sayıyı seç. Eşitlik durumunda son çıkışı daha yakın olanı öne al.
+    var freqW10 = {}, lastSeenIdx = {};
+    for (var pw=1; pw<=48; pw++) { freqW10[pw]=0; lastSeenIdx[pw]=999; }
+    var W10 = Math.min(draws.length, 10);
+    for (var di5=0; di5<W10; di5++) {
       var dN5 = allNumsArr[di5];
       for (var pi7=0; pi7<dN5.length; pi7++) {
         var nw = dN5[pi7];
-        if (nw>=1&&nw<=48) posW8[nw]+=(35-pi7);
+        if (nw>=1 && nw<=48) {
+          freqW10[nw]++;
+          if (lastSeenIdx[nw]===999) lastSeenIdx[nw]=di5;
+        }
       }
     }
-    var A6 = allNums48.slice()
-      .sort(function(a,b){ return posW8[b]-posW8[a]; })
-      .slice(0,6);
+    var A6 = allNums48.slice().sort(function(a,b){
+      if (freqW10[b] !== freqW10[a]) return freqW10[b]-freqW10[a];
+      return lastSeenIdx[a]-lastSeenIdx[b];
+    }).slice(0,6);
     var A6set={}; A6.forEach(function(x){ A6set[x]=1; });
     result.certain6 = A6.slice().sort(function(a,b){return a-b;});
 
