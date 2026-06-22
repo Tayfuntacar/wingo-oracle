@@ -2464,7 +2464,7 @@ function startDashboard() {
           h += '<div class="lbl">KESIN 6 - A \u2014 <span style="color:#38bdf8;font-weight:900">' + c6m + '/6 tuttu (35 sayida)</span>' + _carpAstr + '</div>';
           h += '<div class="nr">';
           pc6.forEach(function(num) {
-            var inIlk5 = af5.indexOf(num) !== -1;
+            var inIlk5 = af5.slice(0,5).indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             var bg  = inIlk5 ? '#38bdf8' : inFull ? '#0c2a3a' : '#2a3040';
             var brd = inIlk5 ? '#38bdf8' : inFull ? '#38bdf8' : '#4a5270';
@@ -2474,7 +2474,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#38bdf8;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#38bdf8;vertical-align:middle;margin-right:3px"></span>Ilk 5\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#0c2a3a;border:1px solid #38bdf8;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
           h += '</div>';
@@ -2490,7 +2490,7 @@ function startDashboard() {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - B \u2014 <span style="color:#f97316;font-weight:900">' + c6bm2 + '/6 tuttu (35 sayida)</span>' + _carpBstr + '</div>';
           h += '<div class="nr">';
           pc6b2.forEach(function(num) {
-            var inIlk5 = af5.indexOf(num) !== -1;
+            var inIlk5 = af5.slice(0,5).indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             var bg  = inIlk5 ? '#f97316' : inFull ? '#2a1000' : '#2a3040';
             var brd = inIlk5 ? '#f97316' : inFull ? '#f97316' : '#4a5270';
@@ -2500,7 +2500,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;vertical-align:middle;margin-right:3px"></span>Ilk 5\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a1000;border:1px solid #f97316;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
           h += '</div>';
@@ -2516,7 +2516,7 @@ function startDashboard() {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - C \u2014 <span style="color:#a78bfa;font-weight:900">' + c6cm2 + '/6 tuttu (35 sayida)</span>' + _carpCstr + '</div>';
           h += '<div class="nr">';
           pc6c2.forEach(function(num) {
-            var inIlk5 = af5.indexOf(num) !== -1;
+            var inIlk5 = af5.slice(0,5).indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             var bg  = inIlk5 ? '#a78bfa' : inFull ? '#1a1030' : '#2a3040';
             var brd = inIlk5 ? '#a78bfa' : inFull ? '#a78bfa' : '#4a5270';
@@ -2526,7 +2526,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#a78bfa;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#a78bfa;vertical-align:middle;margin-right:3px"></span>Ilk 5\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a1030;border:1px solid #a78bfa;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
           h += '</div>';
@@ -2542,7 +2542,7 @@ function startDashboard() {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - D \u2014 <span style="color:#34d399;font-weight:900">' + c6dm2 + '/6 tuttu (35 sayida)</span>' + _carpDstr + '</div>';
           h += '<div class="nr">';
           pc6d2.forEach(function(num) {
-            var inIlk5 = af5.indexOf(num) !== -1;
+            var inIlk5 = af5.slice(0,5).indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             var bg  = inIlk5 ? '#34d399' : inFull ? '#011a10' : '#2a3040';
             var brd = inIlk5 ? '#34d399' : inFull ? '#34d399' : '#4a5270';
@@ -2552,7 +2552,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#34d399;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#34d399;vertical-align:middle;margin-right:3px"></span>Ilk 5\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#011a10;border:1px solid #34d399;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
           h += '</div>';
@@ -2568,7 +2568,7 @@ function startDashboard() {
           h += '<div class="lbl" style="margin-top:8px">KESIN 6 - E \u2014 <span style="color:#f472b6;font-weight:900">' + c6em2 + '/6 tuttu (35 sayida)</span>' + _carpEstr + '</div>';
           h += '<div class="nr">';
           pc6e2.forEach(function(num) {
-            var inIlk5 = af5.indexOf(num) !== -1;
+            var inIlk5 = af5.slice(0,5).indexOf(num) !== -1;
             var inFull = aAll.indexOf(num) !== -1;
             var bg  = inIlk5 ? '#f472b6' : inFull ? '#1a0510' : '#2a3040';
             var brd = inIlk5 ? '#f472b6' : inFull ? '#f472b6' : '#4a5270';
@@ -2578,7 +2578,7 @@ function startDashboard() {
           });
           h += '</div>';
           h += '<div style="font-size:10px;color:#5a6180;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">';
-          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f472b6;vertical-align:middle;margin-right:3px"></span>Ilk 6\'da</span>';
+          h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f472b6;vertical-align:middle;margin-right:3px"></span>Ilk 5\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a0510;border:1px solid #f472b6;vertical-align:middle;margin-right:3px"></span>35\'te</span>';
           h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2a3040;vertical-align:middle;margin-right:3px"></span>Cikmadi</span>';
           h += '</div>';
