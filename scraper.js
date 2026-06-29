@@ -12,6 +12,33 @@ var ALL_COLORS = ['Sari','Yesil','Mavi','Kirmizi','Kahve','Turuncu','Siyah','Mor
 var COLOR_HEX = {'Sari':'#facc15','Yesil':'#22c55e','Mavi':'#3b82f6','Kirmizi':'#ef4444','Kahve':'#d97706','Turuncu':'#f97316','Siyah':'#9ca3af','Mor':'#a855f7'};
 
 var db = new Client({ connectionString: DB_URL, ssl: false });
+var dbReconnecting = false;
+function attachDbErrorHandler(client) {
+  // KRITIK: client'a 'error' listener eklenmezse, sunucu baglantiyi kapattiginda
+  // (admin_shutdown/idle timeout) Node EventEmitter unhandled 'error' firlatip
+  // tum process'i crash ettiriyor. Bu handler bunu yakalayip reconnect ediyor.
+  client.on('error', function(e) {
+    console.log('DB baglanti hatasi (idle/async):', e.message);
+    reconnectDb();
+  });
+}
+function reconnectDb() {
+  if (dbReconnecting) return;
+  dbReconnecting = true;
+  db.end().catch(function(){}).then(function() {
+    db = new Client({ connectionString: DB_URL, ssl: false });
+    attachDbErrorHandler(db);
+    return db.connect();
+  }).then(function() {
+    console.log('DB yeniden baglandi (error-handler ile)!');
+    dbReconnecting = false;
+  }).catch(function(e) {
+    console.log('DB reconnect basarisiz, 5sn sonra tekrar denenecek:', e.message);
+    dbReconnecting = false;
+    setTimeout(reconnectDb, 5000);
+  });
+}
+attachDbErrorHandler(db);
 var lastProcessedWsRound = -1;
 var globalPredCache = {};
 
@@ -20,6 +47,7 @@ function dbQuery(sql, params) {
     console.log('DB baglanti hatasi, yeniden baglaniliyor...', e.message);
     return db.end().catch(function(){}).then(function() {
       db = new Client({ connectionString: DB_URL, ssl: false });
+      attachDbErrorHandler(db);
       return db.connect();
     }).then(function() {
       console.log('DB yeniden baglandi!');
