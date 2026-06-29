@@ -187,6 +187,24 @@ var opt = {
   rejectUnauthorized: false
 };
 
+var lastMsgTime = Date.now();
+var reconnecting = false;
+function scheduleReconnect(delay) {
+  if (reconnecting) return;
+  reconnecting = true;
+  setTimeout(function() { reconnecting = false; connect(); }, delay);
+}
+// WATCHDOG: WS sessizce donarsa (close/error hic tetiklenmezse) tespit et ve zorla yeniden baglan
+setInterval(function() {
+  var idleMs = Date.now() - lastMsgTime;
+  if (idleMs > 6 * 60 * 1000) { // 6 dakikadir mesaj yok -> donmus kabul et
+    console.log('WATCHDOG: ' + Math.round(idleMs/1000) + 'sn mesaj yok, baglanti zorla yenileniyor.');
+    try { if (currentWs) currentWs.terminate(); } catch (e) {}
+    scheduleReconnect(1000);
+  }
+}, 60 * 1000);
+
+var currentWs = null;
 function connect() {
   https.request(opt, function(r) {
     var b = '';
@@ -199,6 +217,7 @@ function connect() {
           headers: { 'Origin': 'https://www.volcanobet.me' },
           rejectUnauthorized: false
         });
+        currentWs = w;
         w.on('open', function() {
           console.log('WebSocket baglandi!');
           w.send('{"protocol":"json","version":1}\x1e');
@@ -207,6 +226,7 @@ function connect() {
           }, 1000);
         });
         w.on('message', function(d) {
+          lastMsgTime = Date.now();
           try {
             var msgs = d.toString().split('\x1e').filter(function(s) { return s.trim(); });
             msgs.forEach(function(msg) {
@@ -256,11 +276,11 @@ function connect() {
             });
           } catch(e) { console.log('Mesaj hatasi:', e.message); }
         });
-        w.on('close', function() { console.log('WS kapandi, 3sn sonra baglaniliyor...'); setTimeout(connect, 3000); });
-        w.on('error', function(e) { console.log('WS hatasi:', e.message); });
-      } catch(e) { console.log('Negotiate hatasi:', e.message); setTimeout(connect, 5000); }
+        w.on('close', function() { console.log('WS kapandi, 3sn sonra baglaniliyor...'); scheduleReconnect(3000); });
+        w.on('error', function(e) { console.log('WS hatasi:', e.message); scheduleReconnect(3000); });
+      } catch(e) { console.log('Negotiate hatasi:', e.message); scheduleReconnect(5000); }
     });
-  }).on('error', function(e) { console.log('HTTPS hatasi:', e.message); setTimeout(connect, 5000); }).end();
+  }).on('error', function(e) { console.log('HTTPS hatasi:', e.message); scheduleReconnect(5000); }).end();
 }
 
 function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
