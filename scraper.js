@@ -664,7 +664,13 @@ function predict(draws) {
   if (predMs >= 0 && MS_OU_OVER[predMs])  { msOUSignal = 'OVER';  }
   if (predMs >= 0 && MS_OU_UNDER[predMs]) { msOUSignal = 'UNDER'; }
 
-  if (streakOU.count >= 7) {
+  // GPT pattern_engine.py: streak_rebound (weight 0.15, source=theoretical, evidence: max streak ~12-13)
+  // Toggle: false yapilirsa eski (data-validated) SERI_DEVAM/TREND kurallarina doner.
+  var GPT_OU_REBOUND_ENABLED = true;
+
+  if (GPT_OU_REBOUND_ENABLED && streakOU.count >= 4 && streakOU.count < 7) {
+    predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 54; state = 'GPT_STREAK_REBOUND';
+  } else if (streakOU.count >= 7) {
     predOU = streakOU.type === 'OVER' ? 'UNDER' : 'OVER'; ouConf = 92; state = 'REVERSAL';
   } else if (streakOU.count >= 5) {
     // 2414 çekiliş analizi: 5x OVER → %58.3 OVER (ters değil, seri devam!)
@@ -777,6 +783,11 @@ function predict(draws) {
     });
   }
 
+  // GPT pattern_engine.py: predict_color -> onceki renk (kendi backtest: lift 1.23x, en guclu bulgulardan)
+  if (prevColor0) {
+    cs[prevColor0] = (cs[prevColor0] || 0) + 8;
+  }
+
   var predColor = coldColors.length > 0
     ? coldColors.sort(function(a, b) { return colorLastSeen[b] - colorLastSeen[a]; })[0]
     : ALL_COLORS.slice().sort(function(a, b) { return cs[b] - cs[a]; })[0];
@@ -832,6 +843,44 @@ function predict(draws) {
            + nmScore[i] * 0.15
            + msBonus[i] * 0.15 * msBonusMultiplier;
   }
+
+  // ── GPT PATTERN ENGINE (24.702 cekilis full veri, train/test dogrulanmis) ──
+  // Pattern: persistent_low_numbers (lift ~0.83, train+test_persist)
+  var GPT_PERSISTENT_LOW  = [26, 47, 15, 12, 16];
+  // Pattern: persistent_high_numbers (lift 1.02-1.18, train+test_persist)
+  var GPT_PERSISTENT_HIGH = [30, 35, 21, 33, 42, 39, 41, 6, 46, 37];
+  // Pattern: cluster_regime - ms degerine gore rejim (A=Haziran benzeri, B=Nisan-Mayis benzeri)
+  var gptCluster = 'O';
+  if (predMs >= 860 && predMs <= 920) gptCluster = 'A';
+  else if (predMs >= 940 && predMs <= 970) gptCluster = 'B';
+  var GPT_CLUSTER_A_BOOST = [30, 34, 17, 14, 39];
+  var GPT_CLUSTER_A_PENALTY = [47, 12, 22, 4, 43];
+  var GPT_CLUSTER_B_BOOST = [22, 33, 4, 35, 42];
+  var GPT_CLUSTER_B_PENALTY = [26, 20, 48, 46, 12];
+  // Pattern: pair_lift (35-liste icinde birlikte cikma egilimi, train+test_persist)
+  var GPT_PAIR_BOOST = [[6,39,0.060],[39,46,0.057],[25,39,0.058],[37,39,0.052],[39,41,0.058],
+                         [15,41,0.054],[6,41,0.036],[15,46,0.049],[32,41,0.039],[37,41,0.043]];
+  // Pattern: persistent_low_pairs (kalici dusuk ciftler, train+test_persist)
+  var GPT_PAIR_AVOID = [[7,21,-0.044],[21,31,-0.043],[1,7,-0.040],[28,38,-0.040],[31,34,-0.039],
+                         [4,44,-0.039],[3,7,-0.037],[26,28,-0.037],[1,28,-0.036],[1,10,-0.036]];
+
+  for (var gi = 1; gi <= 48; gi++) {
+    var gMult = 1.0;
+    if (GPT_PERSISTENT_LOW.indexOf(gi) !== -1)  gMult *= 0.83;
+    if (GPT_PERSISTENT_HIGH.indexOf(gi) !== -1) gMult *= 1.10;
+    if (gptCluster === 'A') {
+      if (GPT_CLUSTER_A_BOOST.indexOf(gi) !== -1)   gMult *= 1.12;
+      if (GPT_CLUSTER_A_PENALTY.indexOf(gi) !== -1) gMult *= 0.88;
+    } else if (gptCluster === 'B') {
+      if (GPT_CLUSTER_B_BOOST.indexOf(gi) !== -1)   gMult *= 1.08;
+      if (GPT_CLUSTER_B_PENALTY.indexOf(gi) !== -1) gMult *= 0.90;
+    }
+    var gPairAdd = 0;
+    GPT_PAIR_BOOST.forEach(function(p){ if (p[0]===gi || p[1]===gi) gPairAdd += p[2]; });
+    GPT_PAIR_AVOID.forEach(function(p){ if (p[0]===gi || p[1]===gi) gPairAdd += p[2]; });
+    ns[gi] = ns[gi] * gMult + (gPairAdd * 0.5 * 100); // pair etkisi puana cevrildi, 0.5 agirlikla (GPT motoru ile ayni olcek)
+  }
+
   var allC = []; for (var i = 1; i <= 48; i++) allC.push(i);
   allC.sort(function(a, b) { return ns[b] - ns[a]; });
 
