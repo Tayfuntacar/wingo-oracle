@@ -924,24 +924,27 @@ function predict(draws) {
   var msRenkFirstNum = MS_RENK_FIRST[msRenkFirstKey] || MS_STRONG_FIRST[predMs] || null;
   var colorNumsFirst = COLOR_NUMS_FIRST[predColor] || [];
 
-  // OU filtresini uygula
-  var filtByOU = colorNumsFirst.filter(function(x){ return predOU==='OVER'?x>24:x<=24; });
-  if (filtByOU.length < 3) filtByOU = colorNumsFirst; // uyuşmazsa tümünü al
-
-  // NS skoruna göre sırala
-  var filtC = filtByOU.slice().sort(function(a,b){ return ns[b]-ns[a]; });
-
-  // MS+Renk sinyali varsa başa al
-  if (msRenkFirstNum) {
-    var mIdx = filtC.indexOf(msRenkFirstNum);
-    if (mIdx > 0) { filtC.splice(mIdx,1); filtC.unshift(msRenkFirstNum); }
-    else if (mIdx === -1) { filtC.unshift(msRenkFirstNum); }
+  // ── FIRST8 TEMİZ MOTOR (W200 ilk-5 frekansı) ──
+  // 25.955 çekiliş backtest sonucu: eski motor (renk kilidi + MS/transition tabloları)
+  // %14 hit ile teorik tavanın (%16.7) ALTINDA kalıyordu; sahte sinyaller iyi adayları
+  // dışarı itiyordu. Temiz W200 ilk-5 frekans motoru: %16.84 (test edilen en iyi varyant).
+  // Mantık: son 200 turda ilk 5 pozisyonda en sık görünen 8 sayı aday olur.
+  var firstPosFreq200 = {};
+  for (var fp=1; fp<=48; fp++) firstPosFreq200[fp]=0;
+  var W200f = Math.min(allNumsArr.length, 200);
+  for (var fdi=0; fdi<W200f; fdi++) {
+    var fArr = allNumsArr[fdi];
+    for (var fpi=0; fpi<5 && fpi<fArr.length; fpi++) {
+      var fn = fArr[fpi];
+      if (fn>=1 && fn<=48) firstPosFreq200[fn]++;
+    }
   }
-
-  // 8'e tamamla — diğer sayılardan ekle
-  for (var ai=0; filtC.length<8 && ai<allC.length; ai++) {
-    if (filtC.indexOf(allC[ai])===-1) filtC.push(allC[ai]);
-  }
+  var filtC = [];
+  for (var fc=1; fc<=48; fc++) filtC.push(fc);
+  filtC.sort(function(a,b){
+    if (firstPosFreq200[b] !== firstPosFreq200[a]) return firstPosFreq200[b]-firstPosFreq200[a];
+    return ns[b]-ns[a]; // esitlikte genel ns skoru
+  });
 
   result.first_candidates  = filtC.slice(0,8).sort(function(a,b){return a-b;});
   result.first5_candidates = filtC.slice(0,8).sort(function(a,b){return a-b;});
