@@ -178,7 +178,7 @@ function loadCacheFromDB() {
       lastSeenRound = dbRound <= 400 ? dbRound : -1;
       console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound + ' (dbRound=' + dbRound + ')');
     }
-    return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200");
+    return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round DESC NULLS LAST, created_at DESC LIMIT 200");
   })
   .then(function(drawRes) {
     if (drawRes.rows.length >= 10) {
@@ -373,7 +373,7 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
 }
 
 function saveNextPrediction(round, globalRound, weekNum, callback) {
-  dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 200")
+  dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round DESC NULLS LAST, created_at DESC LIMIT 200")
   .then(function(res) {
     var draws = res.rows;
     if (draws.length < 10) { console.log('Yeterli veri yok (' + draws.length + '/10)'); if (callback) callback(); return; }
