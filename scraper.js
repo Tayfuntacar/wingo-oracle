@@ -172,13 +172,13 @@ function loadCacheFromDB() {
   .then(function(wRes) {
     if (wRes.rows.length > 0 && wRes.rows[0].week_number !== null) {
       currentWeekNumber = parseInt(wRes.rows[0].week_number) || 0;
-      // lastSeenRound sadece mevcut haftanın round'unu takip etmeli
-      // Eğer DB'deki son round 1000'den büyükse (eski veri), -1 olarak başlat
       var dbRound = parseInt(wRes.rows[0].round) || -1;
       lastSeenRound = dbRound <= 400 ? dbRound : -1;
-      console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound + ' (dbRound=' + dbRound + ')');
+      // maxGlobalRound'u DB'deki en yüksek değerden başlat - yeni kayıtlar bunun üstünden devam eder
+      maxGlobalRound = parseInt(wRes.rows[0].global_round) || 0;
+      console.log('Global round yuklu: week=' + currentWeekNumber + ' lastRound=' + lastSeenRound + ' maxGlobal=' + maxGlobalRound + ' (dbRound=' + dbRound + ')');
     }
-    return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round DESC NULLS LAST, created_at DESC LIMIT 200");
+    return dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY created_at DESC LIMIT 200");
   })
   .then(function(drawRes) {
     if (drawRes.rows.length >= 10) {
@@ -195,16 +195,20 @@ function loadCacheFromDB() {
   }).catch(function(e) { console.log('loadCacheFromDB hatasi:', e.message); });
 }
 
-// ── GLOBAL ROUND TAKIBI (haftalık sıfırlamayı aşmak için) ──
+// ── GLOBAL ROUND TAKIBI (monotonik sayaç - restart & round-reset güvenli) ──
 var currentWeekNumber = 0;
 var lastSeenRound = -1;
+var maxGlobalRound = 0; // DB'deki en yüksek global_round, başlangıçta yüklenir
 function calcGlobalRound(round) {
   if (lastSeenRound > 0 && round < lastSeenRound - 100) {
     currentWeekNumber++;
     console.log('YENİ HAFTA! Week:' + currentWeekNumber + ' ' + lastSeenRound + '->' + round);
   }
   lastSeenRound = round;
-  return currentWeekNumber * 10000 + round;
+  // global_round her zaman monotonik artar - round sıfırlansa da, restart olsa da
+  // asla eski bir değerle çakışmaz (ON CONFLICT reddini engeller)
+  maxGlobalRound = maxGlobalRound + 1;
+  return maxGlobalRound;
 }
 
 var opt = {
@@ -281,12 +285,6 @@ function connect() {
                   var a = j.arguments[0];
 
                   var wsRound = parseInt(a.number);
-                  // Yeni hafta tespiti
-                  if (lastSeenRound > 0 && wsRound < lastSeenRound - 100) {
-                    currentWeekNumber++;
-                    console.log('YENİ HAFTA! Week:' + currentWeekNumber + ' ' + lastSeenRound + '->' + wsRound);
-                  }
-                  var wsGlobal = (currentWeekNumber * 10000) + wsRound;
                   // Ayni round'u tekrar isleme
                   if (wsRound === lastProcessedWsRound) return;
                   lastProcessedWsRound = wsRound;
@@ -373,7 +371,7 @@ function updatePredictions(round, first, first5, allNums, ou, renk) {
 }
 
 function saveNextPrediction(round, globalRound, weekNum, callback) {
-  dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY global_round DESC NULLS LAST, created_at DESC LIMIT 200")
+  dbQuery("SELECT round, first, over_under, color, all_numbers, created_at FROM draws ORDER BY created_at DESC LIMIT 200")
   .then(function(res) {
     var draws = res.rows;
     if (draws.length < 10) { console.log('Yeterli veri yok (' + draws.length + '/10)'); if (callback) callback(); return; }
