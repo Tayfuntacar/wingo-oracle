@@ -113,9 +113,12 @@ db.connect().then(function() {
 }).then(function() {
   return dbQuery('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS global_round BIGINT');
 }).then(function() {
-  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS draws_global_round_idx ON draws(global_round)');
+  // NOT: round/global_round uzerinde UNIQUE index YOK - round her hafta 1'den basladigi icin
+  // unique olursa yeni cekilisler eski round'larla cakisip reddediliyordu. Sadece siralama
+  // hizi icin non-unique index kullaniyoruz.
+  return dbQuery('CREATE INDEX IF NOT EXISTS draws_created_idx ON draws(created_at DESC)');
 }).then(function() {
-  return dbQuery('CREATE UNIQUE INDEX IF NOT EXISTS predictions_global_round_idx ON predictions(global_round)');
+  return dbQuery('CREATE INDEX IF NOT EXISTS predictions_round_idx ON predictions(round)');
 }).then(function() {
   return dbQuery('CREATE TABLE IF NOT EXISTS round_uuids (id SERIAL PRIMARY KEY, round_number INT, round_uuid TEXT, start_datetime TEXT, ms_value INT, created_at TIMESTAMP DEFAULT NOW(), UNIQUE(round_number, round_uuid))');
 }).then(function() {
@@ -313,14 +316,10 @@ function saveDraw(round, first, first5, allNums, ou, renk, allNumsStr) {
   var globalRound = calcGlobalRound(round);
   var weekNum = currentWeekNumber;
   dbQuery(
-    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at, week_number, global_round) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT DO NOTHING RETURNING id',
+    'INSERT INTO draws (round, first, over_under, color, all_numbers, created_at, week_number, global_round) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) RETURNING id',
     [round, first, ou, renk, allNumsStr, weekNum, globalRound]
   ).then(function(ins) {
-    if (ins.rows.length === 0) {
-      console.log('Round ' + round + ' zaten var - tahmin guncelleniyor...');
-    } else {
-      console.log('Draw kaydedildi: Round ' + round + ' (global:' + globalRound + ' week:' + weekNum + ')');
-    }
+    console.log('Draw kaydedildi: Round ' + round + ' (global:' + globalRound + ' week:' + weekNum + ')');
     // Once saveNextPrediction (certain6 yazar), sonra updatePredictions (certain6 okur)
     saveNextPrediction(round, globalRound, weekNum, function() {
       updatePredictions(round, first, first5, allNums, ou, renk);
@@ -384,7 +383,7 @@ function saveNextPrediction(round, globalRound, weekNum, callback) {
     var nextGlobalRound = globalRound + 1;
     console.log('--- TAHMIN: Round ' + nextRound + ' (global:' + nextGlobalRound + ') -> ' + pred.over_under.pred + ' / ' + (pred.color ? pred.color.pred : '?') + ' ---');
     dbQuery(
-      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot,pred_certain6b,pred_certain6c,pred_certain6d,pred_certain6e) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT DO NOTHING',
+      'INSERT INTO predictions (round,week_number,global_round,pred_ou,pred_color,pred_first,pred_first5,pred_certain8,pred_certain6,pred_certain7,pred_jackpot,pred_certain6b,pred_certain6c,pred_certain6d,pred_certain6e) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)',
       [nextRound, weekNum, nextGlobalRound,
        pred.over_under.pred,
        pred.color ? pred.color.pred : '',
